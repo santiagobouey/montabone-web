@@ -26,7 +26,7 @@ export default function Sidebar() {
         style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}
       >
         <div className="p-4 border-b flex items-center justify-center" style={{ borderColor: '#2a2a2a' }}>
-          <Image src="/logo.png" alt="Montabone" width={120} height={60} style={{ objectFit: 'contain' }} />
+          <Image src="/logo.jpg" alt="Montabone" width={130} height={130} style={{ objectFit: 'contain', borderRadius: 8 }} />
         </div>
         <nav className="flex-1 p-3 space-y-1">
           {nav.map((item) => {
