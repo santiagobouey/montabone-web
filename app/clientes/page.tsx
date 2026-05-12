@@ -10,10 +10,14 @@ const TIPO_LABELS: Record<TipoCliente, string> = {
   supermercado: 'Supermercado', particular: 'Particular', otro: 'Otro',
 };
 
+const DIAS_ACTIVO = 60;
+
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [ultimasCompras, setUltimasCompras] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState<'todos' | 'activo' | 'inactivo'>('todos');
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editando, setEditando] = useState<Cliente | null>(null);
@@ -27,8 +31,16 @@ export default function ClientesPage() {
 
   const fetchClientes = useCallback(async () => {
     try {
-      const { data } = await supabase.from('clientes').select('*').order('nombre');
-      setClientes(data || []);
+      const [clientesRes, pedidosRes] = await Promise.all([
+        supabase.from('clientes').select('*').order('nombre'),
+        supabase.from('pedidos').select('cliente_id, fecha').order('fecha', { ascending: false }),
+      ]);
+      setClientes(clientesRes.data || []);
+      const map: Record<string, string> = {};
+      for (const p of (pedidosRes.data || [])) {
+        if (!map[p.cliente_id]) map[p.cliente_id] = p.fecha;
+      }
+      setUltimasCompras(map);
     } catch {}
   }, []);
 
@@ -60,7 +72,16 @@ export default function ClientesPage() {
     setSaving(false);
   }
 
-  const filtrados = clientes.filter((c) => c.nombre.toLowerCase().includes(busqueda.toLowerCase()));
+  const hace60 = new Date(Date.now() - DIAS_ACTIVO * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const esActivo = (id: string) => ultimasCompras[id] ? ultimasCompras[id] >= hace60 : false;
+
+  const filtrados = clientes.filter((c) => {
+    const matchBusqueda = c.nombre.toLowerCase().includes(busqueda.toLowerCase());
+    const activo = esActivo(c.id);
+    if (filtroEstado === 'activo') return matchBusqueda && activo;
+    if (filtroEstado === 'inactivo') return matchBusqueda && !activo;
+    return matchBusqueda;
+  });
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -75,7 +96,21 @@ export default function ClientesPage() {
       </div>
 
       <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar cliente..."
-        className="w-full rounded-lg px-3 py-2 mb-4 text-sm border" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+        className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+      <div className="flex gap-2 mb-4">
+        {(['todos', 'activo', 'inactivo'] as const).map((e) => (
+          <button key={e} onClick={() => setFiltroEstado(e)}
+            className="px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors"
+            style={{
+              backgroundColor: filtroEstado === e ? (e === 'activo' ? '#4caf50' : e === 'inactivo' ? '#e53935' : '#e53935') + '20' : 'transparent',
+              borderColor: filtroEstado === e ? (e === 'activo' ? '#4caf50' : e === 'inactivo' ? '#e53935' : '#e53935') : '#2a2a2a',
+              color: filtroEstado === e ? (e === 'activo' ? '#4caf50' : e === 'inactivo' ? '#e53935' : '#e53935') : '#6b7280',
+            }}>
+            {e === 'todos' ? 'Todos' : e === 'activo' ? '● Activos' : '● Inactivos'}
+          </button>
+        ))}
+      </div>
 
       <div className="space-y-3">
         {filtrados.map((c) => (
@@ -84,9 +119,23 @@ export default function ClientesPage() {
               <div>
                 <p className="font-bold" style={{ color: '#f5f5f5' }}>{c.nombre}</p>
                 <p className="text-sm" style={{ color: '#6b7280' }}>{c.telefono} · {c.direccion}</p>
-                <span className="text-xs px-2 py-0.5 rounded-full mt-1 inline-block" style={{ backgroundColor: '#2a2a2a', color: '#9ca3af' }}>
-                  {TIPO_LABELS[c.tipo] ?? c.tipo}
-                </span>
+                <div className="flex gap-2 mt-1 flex-wrap">
+                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#2a2a2a', color: '#9ca3af' }}>
+                    {TIPO_LABELS[c.tipo] ?? c.tipo}
+                  </span>
+                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                    style={{
+                      backgroundColor: esActivo(c.id) ? '#4caf50' + '20' : '#e53935' + '20',
+                      color: esActivo(c.id) ? '#4caf50' : '#e53935',
+                    }}>
+                    {esActivo(c.id) ? '● Activo' : '● Inactivo'}
+                  </span>
+                  {ultimasCompras[c.id] && (
+                    <span className="text-xs" style={{ color: '#6b7280' }}>
+                      Última compra: {new Date(ultimasCompras[c.id] + 'T12:00:00').toLocaleDateString('es-CL')}
+                    </span>
+                  )}
+                </div>
               </div>
               {c.muestra_entregada && (
                 <span className="text-xs px-2 py-1 rounded-full font-semibold" style={{ backgroundColor: '#4caf50' + '20', color: '#4caf50' }}>
