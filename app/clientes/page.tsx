@@ -75,6 +75,13 @@ export default function ClientesPage() {
     if (!editando) return;
     if (!confirm(`¿Eliminar a ${editando.nombre}? Esta acción no se puede deshacer.`)) return;
     try {
+      // Borrar detalle_pedido y pedidos del cliente antes de borrar el cliente
+      const { data: pedidosCliente } = await supabase.from('pedidos').select('id').eq('cliente_id', editando.id);
+      if (pedidosCliente && pedidosCliente.length > 0) {
+        const ids = pedidosCliente.map((p) => p.id);
+        await supabase.from('detalle_pedido').delete().in('pedido_id', ids);
+        await supabase.from('pedidos').delete().eq('cliente_id', editando.id);
+      }
       const { error } = await supabase.from('clientes').delete().eq('id', editando.id);
       if (error) throw error;
       setShowModal(false);
