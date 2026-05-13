@@ -102,19 +102,28 @@ export default function ClientesPage() {
     setSaving(true);
     const direccionCompleta = comuna ? `${direccion}, ${comuna}` : direccion;
     try {
-      const payload = { nombre, nombre_contacto: nombreContacto || null, telefono, direccion: direccionCompleta, tipo, observaciones: observaciones || null, muestra_entregada: muestraEntregada, activo_manual: activoManual };
+      const payload = {
+        nombre,
+        nombre_contacto: nombreContacto || null,
+        telefono,
+        direccion: direccionCompleta,
+        tipo,
+        observaciones: observaciones || null,
+        muestra_entregada: muestraEntregada ?? false,
+        activo_manual: activoManual ?? null,
+      };
       if (editando) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editando.id);
-        if (error) throw error;
+        if (error) throw new Error(error.message);
       } else {
         const { error } = await supabase.from('clientes').insert(payload);
-        if (error) throw error;
+        if (error) throw new Error(error.message);
       }
       setShowModal(false);
       await fetchClientes();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Error al guardar';
-      alert('Error: ' + msg);
+      const msg = e instanceof Error ? e.message : 'Error desconocido al guardar';
+      alert('Error al guardar: ' + msg);
     }
     setSaving(false);
   }
