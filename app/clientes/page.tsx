@@ -40,6 +40,7 @@ export default function ClientesPage() {
   const [tipo, setTipo] = useState<TipoCliente>('otro');
   const [observaciones, setObservaciones] = useState('');
   const [muestraEntregada, setMuestraEntregada] = useState(false);
+  const [activoManual, setActivoManual] = useState<boolean | null>(null);
 
   const fetchClientes = useCallback(async () => {
     try {
@@ -61,6 +62,7 @@ export default function ClientesPage() {
   function abrirNuevo() {
     setEditando(null); setNombre(''); setTelefono(''); setDireccion('');
     setComuna(''); setTipo('otro'); setObservaciones(''); setMuestraEntregada(false);
+    setActivoManual(null); setConfirmandoEliminar(false);
     setShowModal(true);
   }
 
@@ -69,6 +71,7 @@ export default function ClientesPage() {
     setDireccion(c.direccion); setComuna('');
     setTipo(c.tipo ?? 'otro');
     setObservaciones(c.observaciones || ''); setMuestraEntregada(c.muestra_entregada ?? false);
+    setActivoManual(c.activo_manual ?? null); setConfirmandoEliminar(false);
     setShowModal(true);
   }
 
@@ -98,7 +101,7 @@ export default function ClientesPage() {
     setSaving(true);
     const direccionCompleta = comuna ? `${direccion}, ${comuna}` : direccion;
     try {
-      const payload = { nombre, telefono, direccion: direccionCompleta, tipo, observaciones: observaciones || null, muestra_entregada: muestraEntregada };
+      const payload = { nombre, telefono, direccion: direccionCompleta, tipo, observaciones: observaciones || null, muestra_entregada: muestraEntregada, activo_manual: activoManual };
       if (editando) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editando.id);
         if (error) throw error;
@@ -116,11 +119,14 @@ export default function ClientesPage() {
   }
 
   const hace60 = new Date(Date.now() - DIAS_ACTIVO * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const esActivo = (id: string) => ultimasCompras[id] ? ultimasCompras[id] >= hace60 : false;
+  const esActivo = (c: Cliente) => {
+    if (c.activo_manual !== null && c.activo_manual !== undefined) return c.activo_manual;
+    return ultimasCompras[c.id] ? ultimasCompras[c.id] >= hace60 : false;
+  };
 
   const filtrados = clientes.filter((c) => {
     const matchBusqueda = c.nombre.toLowerCase().includes(busqueda.toLowerCase());
-    const activo = esActivo(c.id);
+    const activo = esActivo(c);
     if (filtroEstado === 'activo') return matchBusqueda && activo;
     if (filtroEstado === 'inactivo') return matchBusqueda && !activo;
     return matchBusqueda;
@@ -168,10 +174,10 @@ export default function ClientesPage() {
                   </span>
                   <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
                     style={{
-                      backgroundColor: esActivo(c.id) ? '#4caf50' + '20' : '#e53935' + '20',
-                      color: esActivo(c.id) ? '#4caf50' : '#e53935',
+                      backgroundColor: esActivo(c) ? '#4caf50' + '20' : '#e53935' + '20',
+                      color: esActivo(c) ? '#4caf50' : '#e53935',
                     }}>
-                    {esActivo(c.id) ? '● Activo' : '● Inactivo'}
+                    {esActivo(c) ? '● Activo' : '● Inactivo'}
                   </span>
                   {ultimasCompras[c.id] && (
                     <span className="text-xs" style={{ color: '#6b7280' }}>
@@ -237,6 +243,24 @@ export default function ClientesPage() {
             <div className="mb-3">
               <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Observaciones</label>
               <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={2} className="w-full rounded-lg px-3 py-2 text-sm border resize-none" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Estado de actividad</label>
+              <div className="flex gap-2">
+                {([{ val: null, label: 'Auto' }, { val: true, label: '● Activo' }, { val: false, label: '● Inactivo' }] as { val: boolean | null; label: string }[]).map(({ val, label }) => (
+                  <button key={String(val)} onClick={() => setActivoManual(val)}
+                    className="flex-1 py-2 rounded-lg border text-xs font-semibold transition-colors"
+                    style={{
+                      backgroundColor: activoManual === val ? (val === true ? '#4caf50' : val === false ? '#e53935' : '#e53935') + '20' : 'transparent',
+                      borderColor: activoManual === val ? (val === true ? '#4caf50' : val === false ? '#e53935' : '#6b7280') : '#2a2a2a',
+                      color: activoManual === val ? (val === true ? '#4caf50' : val === false ? '#e53935' : '#9ca3af') : '#6b7280',
+                    }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs mt-1" style={{ color: '#4b5563' }}>Auto = se calcula por las compras de los últimos {DIAS_ACTIVO} días</p>
             </div>
 
             <button onClick={() => setMuestraEntregada(!muestraEntregada)} className="w-full flex items-center justify-between p-3 rounded-lg border mb-4 transition-colors"

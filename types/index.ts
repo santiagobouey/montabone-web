@@ -19,6 +19,7 @@ export interface Cliente {
   tipo: TipoCliente;
   observaciones: string | null;
   muestra_entregada: boolean;
+  activo_manual: boolean | null;
   created_at: string;
 }
 
