@@ -12,6 +12,7 @@ interface PuntoVenta {
   tipo: string;
   ultimaCompra: string | null;
   activo: boolean;
+  activoManual: boolean | null;
 }
 
 interface Stats {
@@ -49,7 +50,7 @@ export default function DashboardPage() {
           supabase.from('prospectos').select('id').in('estado', ['potencial', 'contactado']),
           supabase.from('productos').select('*').order('nombre'),
           supabase.from('muestras').select('cantidad, producto:productos(nombre)'),
-          supabase.from('clientes').select('id, nombre, tipo'),
+          supabase.from('clientes').select('id, nombre, tipo, activo_manual'),
           supabase.from('pedidos').select('cliente_id, fecha').order('fecha', { ascending: false }),
         ]);
 
@@ -69,8 +70,11 @@ export default function DashboardPage() {
         // Calcular puntos de venta
         const puntosVenta: PuntoVenta[] = clientes.map((c) => {
           const ultimaCompra = ultimaCompraMap[c.id] || null;
-          const activo = ultimaCompra ? ultimaCompra >= hace60 : false;
-          return { id: c.id, nombre: c.nombre, tipo: c.tipo, ultimaCompra, activo };
+          const activoManual = c.activo_manual ?? null;
+          const activo = activoManual !== null
+            ? activoManual
+            : (ultimaCompra ? ultimaCompra >= hace60 : false);
+          return { id: c.id, nombre: c.nombre, tipo: c.tipo, ultimaCompra, activo, activoManual };
         });
 
         const muestrasPorProducto: Record<string, number> = {};
