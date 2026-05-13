@@ -13,6 +13,15 @@ const ESTADOS: EstadoProspecto[] = ['potencial', 'contactado', 'pendiente', 'cer
 const ESTADO_COLORS: Record<EstadoProspecto, string> = {
   potencial: '#2196f3', contactado: '#ff9800', pendiente: '#9c27b0', cerrado: '#4caf50',
 };
+const COMUNAS_SANTIAGO = [
+  'Cerrillos', 'Cerro Navia', 'Conchalí', 'El Bosque', 'Estación Central',
+  'Huechuraba', 'Independencia', 'La Cisterna', 'La Florida', 'La Granja',
+  'La Pintana', 'La Reina', 'Las Condes', 'Lo Barnechea', 'Lo Espejo',
+  'Lo Prado', 'Macul', 'Maipú', 'Ñuñoa', 'Padre Hurtado', 'Pedro Aguirre Cerda',
+  'Peñalolén', 'Providencia', 'Pudahuel', 'Quilicura', 'Quinta Normal',
+  'Recoleta', 'Renca', 'San Bernardo', 'San Joaquín', 'San Miguel',
+  'San Ramón', 'Santiago', 'Vitacura',
+];
 
 export default function ProspectosPage() {
   const [prospectos, setProspectos] = useState<Prospecto[]>([]);
@@ -20,12 +29,16 @@ export default function ProspectosPage() {
   const [busqueda, setBusqueda] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [convirtiendo, setConvirtiendo] = useState(false);
   const [editando, setEditando] = useState<Prospecto | null>(null);
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
+  const [confirmandoConvertir, setConfirmandoConvertir] = useState(false);
 
   const [nombreLocal, setNombreLocal] = useState('');
   const [nombreContacto, setNombreContacto] = useState('');
   const [telefono, setTelefono] = useState('');
   const [direccion, setDireccion] = useState('');
+  const [comuna, setComuna] = useState('');
   const [tipo, setTipo] = useState<TipoCliente>('otro');
   const [estado, setEstado] = useState<EstadoProspecto>('potencial');
   const [observaciones, setObservaciones] = useState('');
@@ -40,9 +53,17 @@ export default function ProspectosPage() {
 
   useEffect(() => { fetchProspectos().finally(() => setLoading(false)); }, [fetchProspectos]);
 
+  function cerrarModal() {
+    setShowModal(false);
+    setConfirmandoEliminar(false);
+    setConfirmandoConvertir(false);
+  }
+
   function abrirNuevo() {
     setEditando(null); setNombreLocal(''); setNombreContacto(''); setTelefono('');
-    setDireccion(''); setTipo('otro'); setEstado('potencial'); setObservaciones(''); setMuestraEntregada(false);
+    setDireccion(''); setComuna(''); setTipo('otro'); setEstado('potencial');
+    setObservaciones(''); setMuestraEntregada(false);
+    setConfirmandoEliminar(false); setConfirmandoConvertir(false);
     setShowModal(true);
   }
 
@@ -51,25 +72,67 @@ export default function ProspectosPage() {
     setNombreLocal(p.nombre_local || '');
     setNombreContacto(p.nombre_contacto || '');
     setTelefono(p.telefono); setDireccion(p.direccion);
+    setComuna('');
     setTipo(p.tipo ?? 'otro'); setEstado(p.estado ?? 'potencial');
     setObservaciones(p.observaciones || ''); setMuestraEntregada(p.muestra_entregada ?? false);
+    setConfirmandoEliminar(false); setConfirmandoConvertir(false);
     setShowModal(true);
   }
 
   async function handleGuardar() {
     if (!nombreLocal || !telefono) return;
     setSaving(true);
+    const direccionCompleta = comuna ? `${direccion}, ${comuna}` : direccion;
     try {
       const payload = {
         nombre_local: nombreLocal, nombre_contacto: nombreContacto,
-        telefono, direccion, tipo, estado, observaciones: observaciones || null, muestra_entregada: muestraEntregada,
+        telefono, direccion: direccionCompleta, tipo, estado,
+        observaciones: observaciones || null, muestra_entregada: muestraEntregada,
       };
       if (editando) await supabase.from('prospectos').update(payload).eq('id', editando.id);
       else await supabase.from('prospectos').insert(payload);
-      setShowModal(false);
+      cerrarModal();
       await fetchProspectos();
     } catch {}
     setSaving(false);
+  }
+
+  async function handleEliminar() {
+    if (!editando) return;
+    try {
+      await supabase.from('prospectos').delete().eq('id', editando.id);
+      cerrarModal();
+      await fetchProspectos();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al eliminar';
+      alert('Error: ' + msg);
+    }
+  }
+
+  async function handleConvertirACliente() {
+    if (!editando) return;
+    setConvirtiendo(true);
+    try {
+      const { error } = await supabase.from('clientes').insert({
+        nombre: editando.nombre_local,
+        telefono: editando.telefono,
+        direccion: editando.direccion,
+        tipo: editando.tipo,
+        observaciones: editando.observaciones,
+        muestra_entregada: editando.muestra_entregada,
+        activo_manual: null,
+      });
+      if (error) throw error;
+      // Marcar el prospecto como cerrado
+      await supabase.from('prospectos').update({ estado: 'cerrado' }).eq('id', editando.id);
+      cerrarModal();
+      await fetchProspectos();
+      alert(`✅ ${editando.nombre_local} fue agregado a la lista de clientes.`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al convertir';
+      alert('Error: ' + msg);
+    }
+    setConvirtiendo(false);
   }
 
   const filtrados = prospectos.filter((p) =>
@@ -120,15 +183,33 @@ export default function ProspectosPage() {
           <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[90vh]" style={{ backgroundColor: '#141414' }}>
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>{editando ? 'Editar Prospecto' : 'Nuevo Prospecto'}</h2>
-              <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
+              <button onClick={cerrarModal} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
-            {[{ label: 'Nombre del Local', value: nombreLocal, set: setNombreLocal }, { label: 'Nombre Contacto', value: nombreContacto, set: setNombreContacto }, { label: 'Teléfono', value: telefono, set: setTelefono }, { label: 'Dirección', value: direccion, set: setDireccion }].map(({ label, value, set }) => (
+            {[{ label: 'Nombre del Local', value: nombreLocal, set: setNombreLocal }, { label: 'Nombre Contacto', value: nombreContacto, set: setNombreContacto }, { label: 'Teléfono', value: telefono, set: setTelefono }].map(({ label, value, set }) => (
               <div key={label} className="mb-3">
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>{label}</label>
                 <input value={value} onChange={(e) => set(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
               </div>
             ))}
+
+            <div className="mb-3">
+              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Dirección</label>
+              <input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Ej: Av. Grecia 1234"
+                className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Comuna</label>
+              <select value={comuna} onChange={(e) => setComuna(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm border"
+                style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: comuna ? '#f5f5f5' : '#6b7280' }}>
+                <option value="">Seleccionar comuna...</option>
+                {COMUNAS_SANTIAGO.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
 
             <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Tipo</label>
             <div className="flex flex-wrap gap-2 mb-3">
@@ -152,7 +233,8 @@ export default function ProspectosPage() {
 
             <div className="mb-3">
               <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Observaciones</label>
-              <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={2} className="w-full rounded-lg px-3 py-2 text-sm border resize-none" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+              <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={2}
+                className="w-full rounded-lg px-3 py-2 text-sm border resize-none" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
             </div>
 
             <button onClick={() => setMuestraEntregada(!muestraEntregada)} className="w-full flex items-center justify-between p-3 rounded-lg border mb-4"
@@ -163,9 +245,68 @@ export default function ProspectosPage() {
               </div>
             </button>
 
-            <button onClick={handleGuardar} disabled={saving || !nombreLocal || !telefono} className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40" style={{ backgroundColor: '#e53935' }}>
+            <button onClick={handleGuardar} disabled={saving || !nombreLocal || !telefono}
+              className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40 mb-2" style={{ backgroundColor: '#e53935' }}>
               {saving ? 'Guardando...' : 'GUARDAR'}
             </button>
+
+            {/* Convertir a cliente */}
+            {editando && !confirmandoConvertir && !confirmandoEliminar && (
+              <button onClick={() => setConfirmandoConvertir(true)}
+                className="w-full py-3 rounded-lg font-bold text-sm border mb-2"
+                style={{ color: '#4caf50', borderColor: '#4caf50' + '40', backgroundColor: '#4caf50' + '10' }}>
+                ✅ Pasar a lista de clientes
+              </button>
+            )}
+
+            {editando && confirmandoConvertir && (
+              <div className="rounded-lg border p-3 mb-2" style={{ borderColor: '#4caf50' + '60', backgroundColor: '#4caf50' + '10' }}>
+                <p className="text-sm font-semibold text-center mb-3" style={{ color: '#f5f5f5' }}>
+                  ¿Agregar {editando.nombre_local} como cliente?
+                </p>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmandoConvertir(false)}
+                    className="flex-1 py-2 rounded-lg font-bold text-sm border"
+                    style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={handleConvertirACliente} disabled={convirtiendo}
+                    className="flex-1 py-2 rounded-lg font-bold text-sm text-white disabled:opacity-40"
+                    style={{ backgroundColor: '#4caf50' }}>
+                    {convirtiendo ? 'Pasando...' : 'Sí, pasar'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Eliminar */}
+            {editando && !confirmandoEliminar && !confirmandoConvertir && (
+              <button onClick={() => setConfirmandoEliminar(true)}
+                className="w-full py-3 rounded-lg font-bold text-sm border"
+                style={{ color: '#e53935', borderColor: '#e53935' + '40', backgroundColor: '#e53935' + '10' }}>
+                🗑 Eliminar prospecto
+              </button>
+            )}
+
+            {editando && confirmandoEliminar && (
+              <div className="rounded-lg border p-3" style={{ borderColor: '#e53935' + '60', backgroundColor: '#e53935' + '10' }}>
+                <p className="text-sm font-semibold text-center mb-3" style={{ color: '#f5f5f5' }}>
+                  ¿Eliminar a {editando.nombre_local}?
+                </p>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmandoEliminar(false)}
+                    className="flex-1 py-2 rounded-lg font-bold text-sm border"
+                    style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={handleEliminar}
+                    className="flex-1 py-2 rounded-lg font-bold text-sm text-white"
+                    style={{ backgroundColor: '#e53935' }}>
+                    Sí, eliminar
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
