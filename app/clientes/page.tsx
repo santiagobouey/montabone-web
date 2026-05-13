@@ -31,6 +31,7 @@ export default function ClientesPage() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editando, setEditando] = useState<Cliente | null>(null);
+  const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
 
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
@@ -73,7 +74,6 @@ export default function ClientesPage() {
 
   async function handleEliminar() {
     if (!editando) return;
-    if (!confirm(`¿Eliminar a ${editando.nombre}? Esta acción no se puede deshacer.`)) return;
     try {
       // Borrar detalle_pedido y pedidos del cliente antes de borrar el cliente
       const { data: pedidosCliente } = await supabase.from('pedidos').select('id').eq('cliente_id', editando.id);
@@ -84,6 +84,7 @@ export default function ClientesPage() {
       }
       const { error } = await supabase.from('clientes').delete().eq('id', editando.id);
       if (error) throw error;
+      setConfirmandoEliminar(false);
       setShowModal(false);
       await fetchClientes();
     } catch (e: unknown) {
@@ -195,7 +196,7 @@ export default function ClientesPage() {
           <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[90vh]" style={{ backgroundColor: '#141414' }}>
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>{editando ? 'Editar Cliente' : 'Nuevo Cliente'}</h2>
-              <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
+              <button onClick={() => { setShowModal(false); setConfirmandoEliminar(false); }} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
             <div className="mb-3">
@@ -250,10 +251,24 @@ export default function ClientesPage() {
               {saving ? 'Guardando...' : 'GUARDAR'}
             </button>
 
-            {editando && (
-              <button onClick={handleEliminar} className="w-full py-3 rounded-lg font-bold text-sm border" style={{ color: '#e53935', borderColor: '#e53935' + '40', backgroundColor: '#e53935' + '10' }}>
+            {editando && !confirmandoEliminar && (
+              <button onClick={() => setConfirmandoEliminar(true)} className="w-full py-3 rounded-lg font-bold text-sm border" style={{ color: '#e53935', borderColor: '#e53935' + '40', backgroundColor: '#e53935' + '10' }}>
                 🗑 Eliminar cliente
               </button>
+            )}
+
+            {editando && confirmandoEliminar && (
+              <div className="rounded-lg border p-3" style={{ borderColor: '#e53935' + '60', backgroundColor: '#e53935' + '10' }}>
+                <p className="text-sm font-semibold text-center mb-3" style={{ color: '#f5f5f5' }}>¿Eliminar a {editando.nombre}?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmandoEliminar(false)} className="flex-1 py-2 rounded-lg font-bold text-sm border" style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={handleEliminar} className="flex-1 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#e53935' }}>
+                    Sí, eliminar
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
