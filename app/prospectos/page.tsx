@@ -85,15 +85,28 @@ export default function ProspectosPage() {
     const direccionCompleta = comuna ? `${direccion}, ${comuna}` : direccion;
     try {
       const payload = {
-        nombre_local: nombreLocal, nombre_contacto: nombreContacto,
-        telefono, direccion: direccionCompleta, tipo, estado,
-        observaciones: observaciones || null, muestra_entregada: muestraEntregada,
+        nombre_local: nombreLocal,
+        nombre_contacto: nombreContacto || null,
+        telefono,
+        direccion: direccionCompleta,
+        tipo,
+        estado,
+        observaciones: observaciones || null,
+        muestra_entregada: muestraEntregada ?? false,
       };
-      if (editando) await supabase.from('prospectos').update(payload).eq('id', editando.id);
-      else await supabase.from('prospectos').insert(payload);
+      if (editando) {
+        const { error } = await supabase.from('prospectos').update(payload).eq('id', editando.id);
+        if (error) throw new Error(error.message);
+      } else {
+        const { error } = await supabase.from('prospectos').insert(payload);
+        if (error) throw new Error(error.message);
+      }
       cerrarModal();
       await fetchProspectos();
-    } catch {}
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error desconocido';
+      alert('Error al guardar: ' + msg);
+    }
     setSaving(false);
   }
 
