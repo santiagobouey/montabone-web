@@ -64,11 +64,19 @@ export default function ClientesPage() {
     setSaving(true);
     try {
       const payload = { nombre, telefono, direccion, tipo, observaciones: observaciones || null, muestra_entregada: muestraEntregada };
-      if (editando) await supabase.from('clientes').update(payload).eq('id', editando.id);
-      else await supabase.from('clientes').insert(payload);
+      if (editando) {
+        const { error } = await supabase.from('clientes').update(payload).eq('id', editando.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('clientes').insert(payload);
+        if (error) throw error;
+      }
       setShowModal(false);
       await fetchClientes();
-    } catch {}
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al guardar';
+      alert('Error: ' + msg);
+    }
     setSaving(false);
   }
 
