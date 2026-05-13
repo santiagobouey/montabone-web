@@ -85,6 +85,7 @@ export default function ProspectosPage() {
     const direccionCompleta = comuna ? `${direccion}, ${comuna}` : direccion;
     try {
       const payload = {
+        nombre: nombreLocal,
         nombre_local: nombreLocal,
         nombre_contacto: nombreContacto || null,
         telefono,
