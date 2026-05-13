@@ -118,19 +118,17 @@ export default function ProspectosPage() {
         telefono: editando.telefono,
         direccion: editando.direccion,
         tipo: editando.tipo,
-        observaciones: editando.observaciones,
-        muestra_entregada: editando.muestra_entregada,
-        activo_manual: null,
+        observaciones: editando.observaciones || null,
+        muestra_entregada: editando.muestra_entregada ?? false,
       });
-      if (error) throw error;
-      // Marcar el prospecto como cerrado
+      if (error) throw new Error(error.message);
       await supabase.from('prospectos').update({ estado: 'cerrado' }).eq('id', editando.id);
       cerrarModal();
       await fetchProspectos();
       alert(`✅ ${editando.nombre_local} fue agregado a la lista de clientes.`);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Error al convertir';
-      alert('Error: ' + msg);
+      const msg = e instanceof Error ? e.message : 'Error desconocido al convertir';
+      alert('Error al convertir: ' + msg);
     }
     setConvirtiendo(false);
   }
