@@ -14,6 +14,7 @@ export interface Producto {
 export interface Cliente {
   id: string;
   nombre: string;
+  nombre_contacto: string | null;
   telefono: string;
   direccion: string;
   tipo: TipoCliente;

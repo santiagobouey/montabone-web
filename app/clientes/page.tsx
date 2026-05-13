@@ -34,6 +34,7 @@ export default function ClientesPage() {
   const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
 
   const [nombre, setNombre] = useState('');
+  const [nombreContacto, setNombreContacto] = useState('');
   const [telefono, setTelefono] = useState('');
   const [direccion, setDireccion] = useState('');
   const [comuna, setComuna] = useState('');
@@ -60,14 +61,14 @@ export default function ClientesPage() {
   useEffect(() => { fetchClientes().finally(() => setLoading(false)); }, [fetchClientes]);
 
   function abrirNuevo() {
-    setEditando(null); setNombre(''); setTelefono(''); setDireccion('');
+    setEditando(null); setNombre(''); setNombreContacto(''); setTelefono(''); setDireccion('');
     setComuna(''); setTipo('otro'); setObservaciones(''); setMuestraEntregada(false);
     setActivoManual(null); setConfirmandoEliminar(false);
     setShowModal(true);
   }
 
   function abrirEditar(c: Cliente) {
-    setEditando(c); setNombre(c.nombre); setTelefono(c.telefono);
+    setEditando(c); setNombre(c.nombre); setNombreContacto(c.nombre_contacto || ''); setTelefono(c.telefono);
     setDireccion(c.direccion); setComuna('');
     setTipo(c.tipo ?? 'otro');
     setObservaciones(c.observaciones || ''); setMuestraEntregada(c.muestra_entregada ?? false);
@@ -101,7 +102,7 @@ export default function ClientesPage() {
     setSaving(true);
     const direccionCompleta = comuna ? `${direccion}, ${comuna}` : direccion;
     try {
-      const payload = { nombre, telefono, direccion: direccionCompleta, tipo, observaciones: observaciones || null, muestra_entregada: muestraEntregada, activo_manual: activoManual };
+      const payload = { nombre, nombre_contacto: nombreContacto || null, telefono, direccion: direccionCompleta, tipo, observaciones: observaciones || null, muestra_entregada: muestraEntregada, activo_manual: activoManual };
       if (editando) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editando.id);
         if (error) throw error;
@@ -167,6 +168,7 @@ export default function ClientesPage() {
             <div className="flex justify-between items-start">
               <div>
                 <p className="font-bold" style={{ color: '#f5f5f5' }}>{c.nombre}</p>
+                {c.nombre_contacto && <p className="text-sm" style={{ color: '#9ca3af' }}>{c.nombre_contacto}</p>}
                 <p className="text-sm" style={{ color: '#6b7280' }}>{c.telefono} · {c.direccion}</p>
                 <div className="flex gap-2 mt-1 flex-wrap">
                   <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#2a2a2a', color: '#9ca3af' }}>
@@ -206,8 +208,13 @@ export default function ClientesPage() {
             </div>
 
             <div className="mb-3">
-              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Nombre</label>
+              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Nombre del Local</label>
               <input value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Nombre del Dueño / Contacto</label>
+              <input value={nombreContacto} onChange={(e) => setNombreContacto(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
             </div>
 
             <div className="mb-3">
