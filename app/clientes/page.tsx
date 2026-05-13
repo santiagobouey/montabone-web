@@ -10,6 +10,16 @@ const TIPO_LABELS: Record<TipoCliente, string> = {
   supermercado: 'Supermercado', particular: 'Particular', otro: 'Otro',
 };
 
+const COMUNAS_SANTIAGO = [
+  'Cerrillos', 'Cerro Navia', 'Conchalí', 'El Bosque', 'Estación Central',
+  'Huechuraba', 'Independencia', 'La Cisterna', 'La Florida', 'La Granja',
+  'La Pintana', 'La Reina', 'Las Condes', 'Lo Barnechea', 'Lo Espejo',
+  'Lo Prado', 'Macul', 'Maipú', 'Ñuñoa', 'Padre Hurtado', 'Pedro Aguirre Cerda',
+  'Peñalolén', 'Providencia', 'Pudahuel', 'Quilicura', 'Quinta Normal',
+  'Recoleta', 'Renca', 'San Bernardo', 'San Joaquín', 'San Miguel',
+  'San Ramón', 'Santiago', 'Vitacura',
+];
+
 const DIAS_ACTIVO = 60;
 
 export default function ClientesPage() {
@@ -25,6 +35,7 @@ export default function ClientesPage() {
   const [nombre, setNombre] = useState('');
   const [telefono, setTelefono] = useState('');
   const [direccion, setDireccion] = useState('');
+  const [comuna, setComuna] = useState('');
   const [tipo, setTipo] = useState<TipoCliente>('otro');
   const [observaciones, setObservaciones] = useState('');
   const [muestraEntregada, setMuestraEntregada] = useState(false);
@@ -48,22 +59,38 @@ export default function ClientesPage() {
 
   function abrirNuevo() {
     setEditando(null); setNombre(''); setTelefono(''); setDireccion('');
-    setTipo('otro'); setObservaciones(''); setMuestraEntregada(false);
+    setComuna(''); setTipo('otro'); setObservaciones(''); setMuestraEntregada(false);
     setShowModal(true);
   }
 
   function abrirEditar(c: Cliente) {
     setEditando(c); setNombre(c.nombre); setTelefono(c.telefono);
-    setDireccion(c.direccion); setTipo(c.tipo ?? 'otro');
+    setDireccion(c.direccion); setComuna('');
+    setTipo(c.tipo ?? 'otro');
     setObservaciones(c.observaciones || ''); setMuestraEntregada(c.muestra_entregada ?? false);
     setShowModal(true);
+  }
+
+  async function handleEliminar() {
+    if (!editando) return;
+    if (!confirm(`¿Eliminar a ${editando.nombre}? Esta acción no se puede deshacer.`)) return;
+    try {
+      const { error } = await supabase.from('clientes').delete().eq('id', editando.id);
+      if (error) throw error;
+      setShowModal(false);
+      await fetchClientes();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al eliminar';
+      alert('Error: ' + msg);
+    }
   }
 
   async function handleGuardar() {
     if (!nombre || !telefono) return;
     setSaving(true);
+    const direccionCompleta = comuna ? `${direccion}, ${comuna}` : direccion;
     try {
-      const payload = { nombre, telefono, direccion, tipo, observaciones: observaciones || null, muestra_entregada: muestraEntregada };
+      const payload = { nombre, telefono, direccion: direccionCompleta, tipo, observaciones: observaciones || null, muestra_entregada: muestraEntregada };
       if (editando) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editando.id);
         if (error) throw error;
@@ -164,12 +191,30 @@ export default function ClientesPage() {
               <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
-            {[{ label: 'Nombre', value: nombre, set: setNombre }, { label: 'Teléfono', value: telefono, set: setTelefono }, { label: 'Dirección', value: direccion, set: setDireccion }].map(({ label, value, set }) => (
-              <div key={label} className="mb-3">
-                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>{label}</label>
-                <input value={value} onChange={(e) => set(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
-              </div>
-            ))}
+            <div className="mb-3">
+              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Nombre</label>
+              <input value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Teléfono</label>
+              <input value={telefono} onChange={(e) => setTelefono(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Dirección</label>
+              <input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Ej: Av. Grecia 1234" className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            </div>
+
+            <div className="mb-3">
+              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Comuna</label>
+              <select value={comuna} onChange={(e) => setComuna(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: comuna ? '#f5f5f5' : '#6b7280' }}>
+                <option value="">Seleccionar comuna...</option>
+                {COMUNAS_SANTIAGO.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
 
             <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Tipo</label>
             <div className="flex flex-wrap gap-2 mb-3">
@@ -194,9 +239,15 @@ export default function ClientesPage() {
               </div>
             </button>
 
-            <button onClick={handleGuardar} disabled={saving || !nombre || !telefono} className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40" style={{ backgroundColor: '#e53935' }}>
+            <button onClick={handleGuardar} disabled={saving || !nombre || !telefono} className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40 mb-2" style={{ backgroundColor: '#e53935' }}>
               {saving ? 'Guardando...' : 'GUARDAR'}
             </button>
+
+            {editando && (
+              <button onClick={handleEliminar} className="w-full py-3 rounded-lg font-bold text-sm border" style={{ color: '#e53935', borderColor: '#e53935' + '40', backgroundColor: '#e53935' + '10' }}>
+                🗑 Eliminar cliente
+              </button>
+            )}
           </div>
         </div>
       )}
