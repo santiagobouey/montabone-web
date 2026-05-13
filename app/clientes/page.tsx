@@ -4,10 +4,10 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Cliente, TipoCliente } from '@/types';
 
-const TIPOS: TipoCliente[] = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'otro'];
+const TIPOS: TipoCliente[] = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'otro'];
 const TIPO_LABELS: Record<TipoCliente, string> = {
   carniceria: 'Carnicería', distribuidor: 'Distribuidor', restaurante: 'Restaurante',
-  supermercado: 'Supermercado', particular: 'Particular', otro: 'Otro',
+  supermercado: 'Supermercado', particular: 'Particular', botilleria: 'Botillería', otro: 'Otro',
 };
 
 const COMUNAS_SANTIAGO = [
