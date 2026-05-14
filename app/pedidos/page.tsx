@@ -174,7 +174,7 @@ export default function PedidosPage() {
     try {
       const { data, error } = await supabase
         .from('eventos')
-        .insert({ nombre: nuevoNombre, fecha: nuevoFecha, lugar: null, observaciones: null })
+        .insert({ nombre: nuevoNombre, fecha: nuevoFecha })
         .select('id, nombre, fecha')
         .single();
       if (error) throw new Error(error.message);
