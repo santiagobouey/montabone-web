@@ -228,7 +228,10 @@ export default function PedidosPage() {
                   <span className="w-8 text-center text-sm font-bold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
                   <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))} className="w-6 h-6 rounded border text-sm" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
                 </div>
-                <span className="text-sm font-bold w-20 text-right" style={{ color: '#f5f5f5' }}>{fmt(item.precioUnitario * item.cantidad)}</span>
+                <span className="text-sm font-bold w-16 text-right" style={{ color: '#f5f5f5' }}>{fmt(item.precioUnitario * item.cantidad)}</span>
+                <button onClick={() => setItems((prev) => prev.filter((i) => i.producto.id !== item.producto.id))}
+                  className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold"
+                  style={{ backgroundColor: '#e53935' + '20', color: '#e53935' }}>✕</button>
               </div>
             ))}
 
