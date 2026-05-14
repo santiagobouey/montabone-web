@@ -32,12 +32,14 @@ export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [todosProductos, setTodosProductos] = useState<Producto[]>([]);
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<EstadoPedido | 'todos'>('todos');
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [tipoModal, setTipoModal] = useState<'pedido' | 'evento'>('pedido');
+  const [editandoPedido, setEditandoPedido] = useState<Pedido | null>(null);
 
   // Form pedido
   const [clienteId, setClienteId] = useState('');
@@ -59,7 +61,7 @@ export default function PedidosPage() {
     try {
       const { data } = await supabase
         .from('pedidos')
-        .select('*, cliente:clientes(nombre), detalle:detalle_pedido(*, producto:productos(nombre))')
+        .select('*, cliente:clientes(nombre), detalle:detalle_pedido(*, producto:productos(*))')
         .order('fecha', { ascending: false });
       setPedidos(data || []);
     } catch {}
@@ -78,17 +80,38 @@ export default function PedidosPage() {
       supabase.from('productos').select('*').order('nombre'),
     ]).then(([, , c, p]) => {
       setClientes(c.data || []);
+      setTodosProductos(p.data || []);
       setProductos(p.data || []);
     }).finally(() => setLoading(false));
   }, [fetchPedidos, fetchEventos]);
 
-  function abrirModal(tipo: 'pedido' | 'evento') {
+  function abrirNuevo(tipo: 'pedido' | 'evento') {
+    setEditandoPedido(null);
     setTipoModal(tipo);
     setItems([]);
     setClienteId(''); setVendedor(''); setObservaciones('');
     setDireccion(''); setTelefono('');
     setFecha(new Date().toISOString().split('T')[0]);
     setEventoId('');
+    setShowModal(true);
+  }
+
+  function abrirEditar(p: Pedido) {
+    setEditandoPedido(p);
+    setTipoModal('pedido');
+    setClienteId(p.cliente_id);
+    setVendedor(p.vendedor);
+    setDireccion(p.direccion);
+    setTelefono(p.telefono);
+    setObservaciones(p.observaciones || '');
+    setFecha(p.fecha);
+    // Cargar items del detalle
+    const itemsCargados: ItemPedido[] = (p.detalle || []).map((d) => ({
+      producto: d.producto as unknown as Producto,
+      cantidad: d.cantidad,
+      precioUnitario: d.precio_unitario,
+    }));
+    setItems(itemsCargados);
     setShowModal(true);
   }
 
@@ -115,25 +138,61 @@ export default function PedidosPage() {
     if (!clienteId || items.length === 0 || !vendedor) return;
     setSaving(true);
     try {
-      const { data: pedido, error: pe } = await supabase.from('pedidos').insert({
-        cliente_id: clienteId, fecha, total, direccion, telefono,
-        estado: 'pendiente', vendedor, observaciones: observaciones || null,
-      }).select().single();
-      if (pe) throw new Error(pe.message);
-      if (!pedido) throw new Error('No se creó el pedido');
-      const { error: de } = await supabase.from('detalle_pedido').insert(
-        items.map((i) => ({ pedido_id: pedido.id, producto_id: i.producto.id, cantidad: i.cantidad, precio_unitario: i.precioUnitario }))
-      );
-      if (de) throw new Error(de.message);
-      for (const item of items) {
-        await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
+      if (editandoPedido) {
+        // EDITAR pedido existente
+        const { error: pe } = await supabase.from('pedidos').update({
+          cliente_id: clienteId, fecha, total, direccion, telefono,
+          vendedor, observaciones: observaciones || null,
+        }).eq('id', editandoPedido.id);
+        if (pe) throw new Error(pe.message);
+
+        // Restaurar stock de los items anteriores
+        for (const d of (editandoPedido.detalle || [])) {
+          const prod = d.producto as unknown as Producto;
+          if (prod?.id) {
+            await supabase.from('productos')
+              .update({ stock: prod.stock + d.cantidad })
+              .eq('id', prod.id);
+          }
+        }
+
+        // Borrar detalle anterior e insertar el nuevo
+        await supabase.from('detalle_pedido').delete().eq('pedido_id', editandoPedido.id);
+        const { error: de } = await supabase.from('detalle_pedido').insert(
+          items.map((i) => ({ pedido_id: editandoPedido.id, producto_id: i.producto.id, cantidad: i.cantidad, precio_unitario: i.precioUnitario }))
+        );
+        if (de) throw new Error(de.message);
+
+        // Descontar nuevo stock
+        for (const item of items) {
+          const prodActual = todosProductos.find((p) => p.id === item.producto.id);
+          if (prodActual) {
+            await supabase.from('productos').update({ stock: Math.max(0, prodActual.stock - item.cantidad) }).eq('id', item.producto.id);
+          }
+        }
+      } else {
+        // CREAR pedido nuevo
+        const { data: pedido, error: pe } = await supabase.from('pedidos').insert({
+          cliente_id: clienteId, fecha, total, direccion, telefono,
+          estado: 'pendiente', vendedor, observaciones: observaciones || null,
+        }).select().single();
+        if (pe) throw new Error(pe.message);
+        if (!pedido) throw new Error('No se creó el pedido');
+
+        const { error: de } = await supabase.from('detalle_pedido').insert(
+          items.map((i) => ({ pedido_id: pedido.id, producto_id: i.producto.id, cantidad: i.cantidad, precio_unitario: i.precioUnitario }))
+        );
+        if (de) throw new Error(de.message);
+
+        for (const item of items) {
+          await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
+        }
       }
+
       setShowModal(false);
-      setProductos((prev) => prev.map((p) => {
-        const item = items.find((i) => i.producto.id === p.id);
-        return item ? { ...p, stock: Math.max(0, p.stock - item.cantidad) } : p;
-      }));
       await fetchPedidos();
+      const { data: p } = await supabase.from('productos').select('*').order('nombre');
+      if (p) { setTodosProductos(p); setProductos(p); }
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
@@ -157,10 +216,6 @@ export default function PedidosPage() {
       for (const item of items) {
         await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
       }
-      setProductos((prev) => prev.map((p) => {
-        const item = items.find((i) => i.producto.id === p.id);
-        return item ? { ...p, stock: Math.max(0, p.stock - item.cantidad) } : p;
-      }));
       setShowModal(false);
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
@@ -206,10 +261,10 @@ export default function PedidosPage() {
           <p className="text-sm" style={{ color: '#6b7280' }}>{pedidos.length} pedidos en total</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => abrirModal('evento')} className="px-3 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#ff9800' }}>
+          <button onClick={() => abrirNuevo('evento')} className="px-3 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#ff9800' }}>
             🎪 Evento
           </button>
-          <button onClick={() => abrirModal('pedido')} className="px-3 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>
+          <button onClick={() => abrirNuevo('pedido')} className="px-3 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>
             + Pedido
           </button>
         </div>
@@ -243,9 +298,16 @@ export default function PedidosPage() {
                     {new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL')} · {p.vendedor}
                   </p>
                 </div>
-                <span className="text-xs font-bold px-2 py-1 rounded-full border" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>
-                  {p.estado.toUpperCase()}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => abrirEditar(p)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
+                    style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>
+                    ✏️
+                  </button>
+                  <span className="text-xs font-bold px-2 py-1 rounded-full border" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>
+                    {p.estado.toUpperCase()}
+                  </span>
+                </div>
               </div>
               {(p.detalle || []).map((d) => (
                 <div key={d.id} className="flex justify-between text-sm py-1 border-b" style={{ borderColor: '#2a2a2a' }}>
@@ -279,28 +341,30 @@ export default function PedidosPage() {
           <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[90vh]" style={{ backgroundColor: '#141414' }}>
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>
-                {tipoModal === 'pedido' ? 'Nuevo Pedido' : '🎪 Venta en Evento'}
+                {editandoPedido ? '✏️ Editar Pedido' : tipoModal === 'pedido' ? 'Nuevo Pedido' : '🎪 Venta en Evento'}
               </h2>
               <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
-            {/* Toggle tipo */}
-            <div className="flex gap-2 mb-4">
-              {(['pedido', 'evento'] as const).map((t) => (
-                <button key={t} onClick={() => { setTipoModal(t); setItems([]); }}
-                  className="flex-1 py-2 rounded-lg border text-sm font-semibold"
-                  style={{
-                    backgroundColor: tipoModal === t ? (t === 'pedido' ? '#e53935' : '#ff9800') : 'transparent',
-                    borderColor: tipoModal === t ? (t === 'pedido' ? '#e53935' : '#ff9800') : '#2a2a2a',
-                    color: tipoModal === t ? 'white' : '#6b7280',
-                  }}>
-                  {t === 'pedido' ? '📦 Pedido' : '🎪 Evento'}
-                </button>
-              ))}
-            </div>
+            {/* Toggle tipo (solo en nuevo) */}
+            {!editandoPedido && (
+              <div className="flex gap-2 mb-4">
+                {(['pedido', 'evento'] as const).map((t) => (
+                  <button key={t} onClick={() => { setTipoModal(t); setItems([]); }}
+                    className="flex-1 py-2 rounded-lg border text-sm font-semibold"
+                    style={{
+                      backgroundColor: tipoModal === t ? (t === 'pedido' ? '#e53935' : '#ff9800') : 'transparent',
+                      borderColor: tipoModal === t ? (t === 'pedido' ? '#e53935' : '#ff9800') : '#2a2a2a',
+                      color: tipoModal === t ? 'white' : '#6b7280',
+                    }}>
+                    {t === 'pedido' ? '📦 Pedido' : '🎪 Evento'}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* FORM PEDIDO */}
-            {tipoModal === 'pedido' && (
+            {(tipoModal === 'pedido' || editandoPedido) && (
               <>
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cliente</label>
                 <select value={clienteId} onChange={(e) => selectCliente(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }}>
@@ -323,7 +387,7 @@ export default function PedidosPage() {
 
                 <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Productos</label>
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {productos.map((p) => {
+                  {todosProductos.map((p) => {
                     const sel = items.find((i) => i.producto.id === p.id);
                     return (
                       <button key={p.id} onClick={() => toggleProducto(p)}
@@ -366,13 +430,13 @@ export default function PedidosPage() {
                 <button onClick={handleGuardarPedido} disabled={saving || !clienteId || items.length === 0 || !vendedor}
                   className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40"
                   style={{ backgroundColor: '#e53935' }}>
-                  {saving ? 'Guardando...' : 'CONFIRMAR PEDIDO'}
+                  {saving ? 'Guardando...' : editandoPedido ? 'GUARDAR CAMBIOS' : 'CONFIRMAR PEDIDO'}
                 </button>
               </>
             )}
 
             {/* FORM EVENTO */}
-            {tipoModal === 'evento' && (
+            {tipoModal === 'evento' && !editandoPedido && (
               <>
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Evento</label>
                 <div className="flex gap-2 mb-4">
@@ -393,7 +457,7 @@ export default function PedidosPage() {
 
                 <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Productos</label>
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {productos.map((p) => {
+                  {todosProductos.map((p) => {
                     const sel = items.find((i) => i.producto.id === p.id);
                     return (
                       <button key={p.id} onClick={() => toggleProducto(p, PRECIOS_EVENTO[1])}
