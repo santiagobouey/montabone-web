@@ -119,14 +119,20 @@ export default function VentasEventosPage() {
     if (!nuevoNombre) return;
     setSavingEvento(true);
     try {
-      const { data, error } = await supabase.from('eventos').insert({ nombre: nuevoNombre, fecha: nuevoFecha }).select().single();
+      const { data, error } = await supabase
+        .from('eventos')
+        .insert({ nombre: nuevoNombre, fecha: nuevoFecha, lugar: null, observaciones: null })
+        .select('id, nombre, fecha')
+        .single();
       if (error) throw new Error(error.message);
-      await fetchEventos();
+      if (!data) throw new Error('No se pudo crear el evento');
+      setEventos((prev) => [data, ...prev]);
       setEventoId(data.id);
       setShowNuevoEvento(false);
       setNuevoNombre('');
+      setNuevoFecha(new Date().toISOString().split('T')[0]);
     } catch (e: unknown) {
-      alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
+      alert('Error al crear evento: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
     setSavingEvento(false);
   }
