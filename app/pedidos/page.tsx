@@ -230,8 +230,8 @@ export default function PedidosPage() {
                 </div>
                 <span className="text-sm font-bold w-16 text-right" style={{ color: '#f5f5f5' }}>{fmt(item.precioUnitario * item.cantidad)}</span>
                 <button onClick={() => setItems((prev) => prev.filter((i) => i.producto.id !== item.producto.id))}
-                  className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold"
-                  style={{ backgroundColor: '#e53935' + '20', color: '#e53935' }}>✕</button>
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-base"
+                  style={{ backgroundColor: '#e53935' + '20', color: '#e53935' }}>🗑</button>
               </div>
             ))}
 
