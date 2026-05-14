@@ -14,6 +14,7 @@ const ESTADO_COLORS: Record<string, string> = {
 };
 
 const ESTADOS: EstadoPedido[] = ['pendiente', 'preparado', 'entregado', 'pagado'];
+const PRECIOS_EVENTO = [3990, 4990, 4995, 5990];
 
 interface ItemPedido {
   producto: Producto;
@@ -21,16 +22,24 @@ interface ItemPedido {
   precioUnitario: number;
 }
 
+interface Evento {
+  id: string;
+  nombre: string;
+  fecha: string;
+}
+
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const [eventos, setEventos] = useState<Evento[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<EstadoPedido | 'todos'>('todos');
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [tipoModal, setTipoModal] = useState<'pedido' | 'evento'>('pedido');
 
-  // Form
+  // Form pedido
   const [clienteId, setClienteId] = useState('');
   const [vendedor, setVendedor] = useState('');
   const [direccion, setDireccion] = useState('');
@@ -38,6 +47,13 @@ export default function PedidosPage() {
   const [observaciones, setObservaciones] = useState('');
   const [items, setItems] = useState<ItemPedido[]>([]);
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+
+  // Form evento
+  const [eventoId, setEventoId] = useState('');
+  const [showNuevoEvento, setShowNuevoEvento] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState('');
+  const [nuevoFecha, setNuevoFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [savingEvento, setSavingEvento] = useState(false);
 
   const fetchPedidos = useCallback(async () => {
     try {
@@ -49,16 +65,32 @@ export default function PedidosPage() {
     } catch {}
   }, []);
 
+  const fetchEventos = useCallback(async () => {
+    const { data } = await supabase.from('eventos').select('id, nombre, fecha').order('fecha', { ascending: false });
+    setEventos(data || []);
+  }, []);
+
   useEffect(() => {
     Promise.all([
       fetchPedidos(),
+      fetchEventos(),
       supabase.from('clientes').select('*').order('nombre'),
-      supabase.from('productos').select('*').gt('stock', 0).order('nombre'),
-    ]).then(([, c, p]) => {
+      supabase.from('productos').select('*').order('nombre'),
+    ]).then(([, , c, p]) => {
       setClientes(c.data || []);
       setProductos(p.data || []);
     }).finally(() => setLoading(false));
-  }, [fetchPedidos]);
+  }, [fetchPedidos, fetchEventos]);
+
+  function abrirModal(tipo: 'pedido' | 'evento') {
+    setTipoModal(tipo);
+    setItems([]);
+    setClienteId(''); setVendedor(''); setObservaciones('');
+    setDireccion(''); setTelefono('');
+    setFecha(new Date().toISOString().split('T')[0]);
+    setEventoId('');
+    setShowModal(true);
+  }
 
   function selectCliente(id: string) {
     const c = clientes.find((cl) => cl.id === id);
@@ -66,35 +98,95 @@ export default function PedidosPage() {
     if (c) { setTelefono(c.telefono); setDireccion(c.direccion); }
   }
 
-  function toggleProducto(p: Producto) {
+  function toggleProducto(p: Producto, precioDefault?: number) {
     const exists = items.find((i) => i.producto.id === p.id);
     if (exists) setItems((prev) => prev.filter((i) => i.producto.id !== p.id));
-    else setItems((prev) => [...prev, { producto: p, cantidad: 1, precioUnitario: p.precio }]);
+    else setItems((prev) => [...prev, { producto: p, cantidad: 1, precioUnitario: precioDefault ?? p.precio }]);
+  }
+
+  function setPrecioEvento(productoId: string, precio: number) {
+    setItems((prev) => prev.map((i) => i.producto.id === productoId ? { ...i, precioUnitario: precio } : i));
   }
 
   const neto = items.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0);
-  const total = Math.round(neto * 1.19);
+  const total = tipoModal === 'pedido' ? Math.round(neto * 1.19) : neto;
 
-  async function handleGuardar() {
+  async function handleGuardarPedido() {
     if (!clienteId || items.length === 0 || !vendedor) return;
     setSaving(true);
     try {
-      const { data: pedido } = await supabase.from('pedidos').insert({
+      const { data: pedido, error: pe } = await supabase.from('pedidos').insert({
         cliente_id: clienteId, fecha, total, direccion, telefono,
         estado: 'pendiente', vendedor, observaciones: observaciones || null,
       }).select().single();
-      if (!pedido) throw new Error('No pedido');
-      await supabase.from('detalle_pedido').insert(
+      if (pe) throw new Error(pe.message);
+      if (!pedido) throw new Error('No se creó el pedido');
+      const { error: de } = await supabase.from('detalle_pedido').insert(
         items.map((i) => ({ pedido_id: pedido.id, producto_id: i.producto.id, cantidad: i.cantidad, precio_unitario: i.precioUnitario }))
       );
+      if (de) throw new Error(de.message);
       for (const item of items) {
         await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
       }
       setShowModal(false);
-      setClienteId(''); setVendedor(''); setItems([]); setObservaciones('');
+      setProductos((prev) => prev.map((p) => {
+        const item = items.find((i) => i.producto.id === p.id);
+        return item ? { ...p, stock: Math.max(0, p.stock - item.cantidad) } : p;
+      }));
       await fetchPedidos();
-    } catch {}
+    } catch (e: unknown) {
+      alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
+    }
     setSaving(false);
+  }
+
+  async function handleGuardarEvento() {
+    if (!eventoId || items.length === 0) return;
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('ventas_evento').insert(
+        items.map((i) => ({
+          evento_id: eventoId,
+          producto_id: i.producto.id,
+          cantidad: i.cantidad,
+          precio_unitario: i.precioUnitario,
+          total: i.precioUnitario * i.cantidad,
+        }))
+      );
+      if (error) throw new Error(error.message);
+      for (const item of items) {
+        await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
+      }
+      setProductos((prev) => prev.map((p) => {
+        const item = items.find((i) => i.producto.id === p.id);
+        return item ? { ...p, stock: Math.max(0, p.stock - item.cantidad) } : p;
+      }));
+      setShowModal(false);
+    } catch (e: unknown) {
+      alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
+    }
+    setSaving(false);
+  }
+
+  async function handleCrearEvento() {
+    if (!nuevoNombre) return;
+    setSavingEvento(true);
+    try {
+      const { data, error } = await supabase
+        .from('eventos')
+        .insert({ nombre: nuevoNombre, fecha: nuevoFecha, lugar: null, observaciones: null })
+        .select('id, nombre, fecha')
+        .single();
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error('No se pudo crear el evento');
+      setEventos((prev) => [data, ...prev]);
+      setEventoId(data.id);
+      setShowNuevoEvento(false);
+      setNuevoNombre('');
+    } catch (e: unknown) {
+      alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
+    }
+    setSavingEvento(false);
   }
 
   async function cambiarEstado(id: string, estado: EstadoPedido) {
@@ -113,9 +205,14 @@ export default function PedidosPage() {
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Pedidos</h1>
           <p className="text-sm" style={{ color: '#6b7280' }}>{pedidos.length} pedidos en total</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>
-          + Nuevo
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => abrirModal('evento')} className="px-3 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#ff9800' }}>
+            🎪 Evento
+          </button>
+          <button onClick={() => abrirModal('pedido')} className="px-3 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>
+            + Pedido
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -176,80 +273,219 @@ export default function PedidosPage() {
         )}
       </div>
 
-      {/* Modal nuevo pedido */}
+      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
           <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[90vh]" style={{ backgroundColor: '#141414' }}>
             <div className="flex justify-between items-center mb-4">
-              <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>Nuevo Pedido</h2>
+              <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>
+                {tipoModal === 'pedido' ? 'Nuevo Pedido' : '🎪 Venta en Evento'}
+              </h2>
               <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
-            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cliente</label>
-            <select value={clienteId} onChange={(e) => selectCliente(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }}>
-              <option value="">Seleccionar cliente...</option>
-              {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
-
-            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha</label>
-            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
-
-            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Vendedor</label>
-            <div className="flex gap-2 mb-3">
-              {['Santiago', 'Hernán'].map((v) => (
-                <button key={v} onClick={() => setVendedor(v)} className="flex-1 py-2 rounded-lg border text-sm font-semibold transition-colors"
-                  style={{ backgroundColor: vendedor === v ? '#e53935' : 'transparent', borderColor: vendedor === v ? '#e53935' : '#2a2a2a', color: vendedor === v ? 'white' : '#6b7280' }}>
-                  {v}
+            {/* Toggle tipo */}
+            <div className="flex gap-2 mb-4">
+              {(['pedido', 'evento'] as const).map((t) => (
+                <button key={t} onClick={() => { setTipoModal(t); setItems([]); }}
+                  className="flex-1 py-2 rounded-lg border text-sm font-semibold"
+                  style={{
+                    backgroundColor: tipoModal === t ? (t === 'pedido' ? '#e53935' : '#ff9800') : 'transparent',
+                    borderColor: tipoModal === t ? (t === 'pedido' ? '#e53935' : '#ff9800') : '#2a2a2a',
+                    color: tipoModal === t ? 'white' : '#6b7280',
+                  }}>
+                  {t === 'pedido' ? '📦 Pedido' : '🎪 Evento'}
                 </button>
               ))}
             </div>
 
-            <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Productos</label>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {productos.map((p) => {
-                const sel = items.find((i) => i.producto.id === p.id);
-                return (
-                  <button key={p.id} onClick={() => toggleProducto(p)}
-                    className="px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors"
-                    style={{ backgroundColor: sel ? '#e53935' + '20' : '#1c1c1c', borderColor: sel ? '#e53935' : '#2a2a2a', color: sel ? '#e53935' : '#9ca3af' }}>
-                    {p.nombre} ({p.stock})
-                  </button>
-                );
-              })}
-            </div>
+            {/* FORM PEDIDO */}
+            {tipoModal === 'pedido' && (
+              <>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cliente</label>
+                <select value={clienteId} onChange={(e) => selectCliente(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }}>
+                  <option value="">Seleccionar cliente...</option>
+                  {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
 
-            {items.map((item) => (
-              <div key={item.producto.id} className="flex items-center gap-2 mb-2 p-2 rounded-lg" style={{ backgroundColor: '#1c1c1c' }}>
-                <span className="flex-1 text-sm" style={{ color: '#f5f5f5' }}>{item.producto.nombre}</span>
-                <input type="number" value={item.precioUnitario} onChange={(e) => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, precioUnitario: Number(e.target.value) } : i))}
-                  className="w-24 rounded px-2 py-1 text-sm border text-center" style={{ backgroundColor: '#0a0a0a', borderColor: '#2a2a2a', color: '#e53935' }} />
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))} className="w-6 h-6 rounded border text-sm" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
-                  <span className="w-8 text-center text-sm font-bold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
-                  <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))} className="w-6 h-6 rounded border text-sm" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha</label>
+                <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Vendedor</label>
+                <div className="flex gap-2 mb-3">
+                  {['Santiago', 'Hernán'].map((v) => (
+                    <button key={v} onClick={() => setVendedor(v)} className="flex-1 py-2 rounded-lg border text-sm font-semibold"
+                      style={{ backgroundColor: vendedor === v ? '#e53935' : 'transparent', borderColor: vendedor === v ? '#e53935' : '#2a2a2a', color: vendedor === v ? 'white' : '#6b7280' }}>
+                      {v}
+                    </button>
+                  ))}
                 </div>
-                <span className="text-sm font-bold w-16 text-right" style={{ color: '#f5f5f5' }}>{fmt(item.precioUnitario * item.cantidad)}</span>
-                <button onClick={() => setItems((prev) => prev.filter((i) => i.producto.id !== item.producto.id))}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-base"
-                  style={{ backgroundColor: '#e53935' + '20', color: '#e53935' }}>🗑</button>
-              </div>
-            ))}
 
-            {items.length > 0 && (
-              <div className="mb-3 p-3 rounded-lg" style={{ backgroundColor: '#1c1c1c' }}>
-                <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>Neto</span><span style={{ color: '#f5f5f5' }}>{fmt(neto)}</span></div>
-                <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>IVA 19%</span><span style={{ color: '#f5f5f5' }}>{fmt(total - neto)}</span></div>
-                <div className="flex justify-between font-bold"><span style={{ color: '#6b7280' }}>TOTAL</span><span className="text-xl" style={{ color: '#f5f5f5' }}>{fmt(total)}</span></div>
-              </div>
+                <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Productos</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {productos.map((p) => {
+                    const sel = items.find((i) => i.producto.id === p.id);
+                    return (
+                      <button key={p.id} onClick={() => toggleProducto(p)}
+                        className="px-3 py-1.5 rounded-lg border text-xs font-medium"
+                        style={{ backgroundColor: sel ? '#e53935' + '20' : '#1c1c1c', borderColor: sel ? '#e53935' : '#2a2a2a', color: sel ? '#e53935' : '#9ca3af' }}>
+                        {p.nombre} ({p.stock})
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {items.map((item) => (
+                  <div key={item.producto.id} className="flex items-center gap-2 mb-2 p-2 rounded-lg" style={{ backgroundColor: '#1c1c1c' }}>
+                    <span className="flex-1 text-sm" style={{ color: '#f5f5f5' }}>{item.producto.nombre}</span>
+                    <input type="number" value={item.precioUnitario} onChange={(e) => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, precioUnitario: Number(e.target.value) } : i))}
+                      className="w-24 rounded px-2 py-1 text-sm border text-center" style={{ backgroundColor: '#0a0a0a', borderColor: '#2a2a2a', color: '#e53935' }} />
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))} className="w-6 h-6 rounded border text-sm" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
+                      <span className="w-8 text-center text-sm font-bold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
+                      <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))} className="w-6 h-6 rounded border text-sm" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                    </div>
+                    <span className="text-sm font-bold w-16 text-right" style={{ color: '#f5f5f5' }}>{fmt(item.precioUnitario * item.cantidad)}</span>
+                    <button onClick={() => setItems((prev) => prev.filter((i) => i.producto.id !== item.producto.id))}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center"
+                      style={{ backgroundColor: '#e53935' + '20', color: '#e53935' }}>🗑</button>
+                  </div>
+                ))}
+
+                {items.length > 0 && (
+                  <div className="mb-3 p-3 rounded-lg" style={{ backgroundColor: '#1c1c1c' }}>
+                    <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>Neto</span><span style={{ color: '#f5f5f5' }}>{fmt(neto)}</span></div>
+                    <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>IVA 19%</span><span style={{ color: '#f5f5f5' }}>{fmt(total - neto)}</span></div>
+                    <div className="flex justify-between font-bold"><span style={{ color: '#6b7280' }}>TOTAL</span><span className="text-xl" style={{ color: '#f5f5f5' }}>{fmt(total)}</span></div>
+                  </div>
+                )}
+
+                <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Observaciones..." rows={2}
+                  className="w-full rounded-lg px-3 py-2 mb-4 text-sm border resize-none" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+                <button onClick={handleGuardarPedido} disabled={saving || !clienteId || items.length === 0 || !vendedor}
+                  className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40"
+                  style={{ backgroundColor: '#e53935' }}>
+                  {saving ? 'Guardando...' : 'CONFIRMAR PEDIDO'}
+                </button>
+              </>
             )}
 
-            <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Observaciones..." rows={2}
-              className="w-full rounded-lg px-3 py-2 mb-4 text-sm border resize-none" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            {/* FORM EVENTO */}
+            {tipoModal === 'evento' && (
+              <>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Evento</label>
+                <div className="flex gap-2 mb-4">
+                  <select value={eventoId} onChange={(e) => setEventoId(e.target.value)}
+                    className="flex-1 rounded-lg px-3 py-2 text-sm border"
+                    style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: eventoId ? '#f5f5f5' : '#6b7280' }}>
+                    <option value="">Seleccionar evento...</option>
+                    {eventos.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.nombre} — {new Date(e.fecha + 'T12:00:00').toLocaleDateString('es-CL')}
+                      </option>
+                    ))}
+                  </select>
+                  <button onClick={() => setShowNuevoEvento(true)}
+                    className="px-3 py-2 rounded-lg text-sm font-semibold text-white"
+                    style={{ backgroundColor: '#ff9800' }}>+ Nuevo</button>
+                </div>
 
-            <button onClick={handleGuardar} disabled={saving || !clienteId || items.length === 0 || !vendedor}
-              className="w-full py-3 rounded-lg font-bold text-white text-sm transition-opacity disabled:opacity-40"
-              style={{ backgroundColor: '#e53935' }}>
-              {saving ? 'Guardando...' : 'CONFIRMAR PEDIDO'}
+                <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Productos</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {productos.map((p) => {
+                    const sel = items.find((i) => i.producto.id === p.id);
+                    return (
+                      <button key={p.id} onClick={() => toggleProducto(p, PRECIOS_EVENTO[1])}
+                        className="px-3 py-1.5 rounded-lg border text-xs font-medium"
+                        style={{ backgroundColor: sel ? '#ff9800' + '20' : '#1c1c1c', borderColor: sel ? '#ff9800' : '#2a2a2a', color: sel ? '#ff9800' : '#9ca3af' }}>
+                        {p.nombre} ({p.stock})
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {items.map((item) => (
+                  <div key={item.producto.id} className="mb-3 p-3 rounded-lg border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a' }}>
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="font-semibold text-sm" style={{ color: '#f5f5f5' }}>{item.producto.nombre}</p>
+                      <button onClick={() => setItems((prev) => prev.filter((i) => i.producto.id !== item.producto.id))}
+                        className="w-7 h-7 rounded flex items-center justify-center"
+                        style={{ backgroundColor: '#e53935' + '20', color: '#e53935' }}>🗑</button>
+                    </div>
+                    <p className="text-xs mb-2" style={{ color: '#6b7280' }}>Precio:</p>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {PRECIOS_EVENTO.map((precio) => (
+                        <button key={precio} onClick={() => setPrecioEvento(item.producto.id, precio)}
+                          className="px-3 py-1.5 rounded-lg border text-xs font-bold"
+                          style={{
+                            backgroundColor: item.precioUnitario === precio ? '#ff9800' : 'transparent',
+                            borderColor: item.precioUnitario === precio ? '#ff9800' : '#2a2a2a',
+                            color: item.precioUnitario === precio ? 'white' : '#9ca3af',
+                          }}>
+                          {fmt(precio)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))}
+                          className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
+                        <span className="w-8 text-center font-extrabold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
+                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))}
+                          className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                      </div>
+                      <p className="font-extrabold" style={{ color: '#ff9800' }}>{fmt(item.precioUnitario * item.cantidad)}</p>
+                    </div>
+                  </div>
+                ))}
+
+                {items.length > 0 && (
+                  <div className="flex justify-between items-center py-3 mb-3 border-t" style={{ borderColor: '#2a2a2a' }}>
+                    <span className="font-bold" style={{ color: '#6b7280' }}>TOTAL</span>
+                    <span className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(total)}</span>
+                  </div>
+                )}
+
+                <button onClick={handleGuardarEvento} disabled={saving || !eventoId || items.length === 0}
+                  className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40"
+                  style={{ backgroundColor: '#ff9800' }}>
+                  {saving ? 'Guardando...' : '✅ REGISTRAR VENTA'}
+                </button>
+                {!eventoId && items.length > 0 && (
+                  <p className="text-xs text-center mt-2" style={{ color: '#e53935' }}>Selecciona un evento primero</p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal nuevo evento */}
+      {showNuevoEvento && (
+        <div className="fixed inset-0 z-[60] flex items-end md:items-center justify-center p-0 md:p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <div className="w-full md:max-w-sm rounded-t-2xl md:rounded-2xl p-6" style={{ backgroundColor: '#1c1c1c' }}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>Nuevo Evento</h2>
+              <button onClick={() => setShowNuevoEvento(false)} style={{ color: '#6b7280' }}>✕</button>
+            </div>
+            <div className="mb-3">
+              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Nombre</label>
+              <input value={nuevoNombre} onChange={(e) => setNuevoNombre(e.target.value)}
+                placeholder="Ej: Feria La Reina..."
+                className="w-full rounded-lg px-3 py-2 text-sm border"
+                style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            </div>
+            <div className="mb-4">
+              <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha</label>
+              <input type="date" value={nuevoFecha} onChange={(e) => setNuevoFecha(e.target.value)}
+                className="w-full rounded-lg px-3 py-2 text-sm border"
+                style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            </div>
+            <button onClick={handleCrearEvento} disabled={savingEvento || !nuevoNombre}
+              className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40"
+              style={{ backgroundColor: '#ff9800' }}>
+              {savingEvento ? 'Creando...' : 'CREAR EVENTO'}
             </button>
           </div>
         </div>
