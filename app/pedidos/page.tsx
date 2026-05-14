@@ -14,7 +14,7 @@ const ESTADO_COLORS: Record<string, string> = {
 };
 
 const ESTADOS: EstadoPedido[] = ['pendiente', 'preparado', 'entregado', 'pagado'];
-const PRECIOS_EVENTO = [3990, 4990, 4995, 5990];
+const PRECIOS_EVENTO = [3300, 3990, 4990, 4995, 5990];
 
 interface ItemPedido {
   producto: Producto;
