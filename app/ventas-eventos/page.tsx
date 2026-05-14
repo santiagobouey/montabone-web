@@ -55,7 +55,7 @@ export default function VentasEventosPage() {
       .select('id, cantidad, precio_unitario, total, producto:productos(nombre)')
       .eq('evento_id', eId)
       .order('created_at', { ascending: false });
-    setVentasGuardadas((data || []) as VentaGuardada[]);
+    setVentasGuardadas((data || []) as unknown as VentaGuardada[]);
   }, []);
 
   useEffect(() => {
