@@ -400,19 +400,37 @@ export default function PedidosPage() {
                 </div>
 
                 {items.map((item) => (
-                  <div key={item.producto.id} className="flex items-center gap-2 mb-2 p-2 rounded-lg" style={{ backgroundColor: '#1c1c1c' }}>
-                    <span className="flex-1 text-sm" style={{ color: '#f5f5f5' }}>{item.producto.nombre}</span>
-                    <input type="number" value={item.precioUnitario} onChange={(e) => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, precioUnitario: Number(e.target.value) } : i))}
-                      className="w-24 rounded px-2 py-1 text-sm border text-center" style={{ backgroundColor: '#0a0a0a', borderColor: '#2a2a2a', color: '#e53935' }} />
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))} className="w-6 h-6 rounded border text-sm" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
-                      <span className="w-8 text-center text-sm font-bold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
-                      <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))} className="w-6 h-6 rounded border text-sm" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                  <div key={item.producto.id} className="mb-3 p-3 rounded-lg border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a' }}>
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="font-semibold text-sm" style={{ color: '#f5f5f5' }}>{item.producto.nombre}</p>
+                      <button onClick={() => setItems((prev) => prev.filter((i) => i.producto.id !== item.producto.id))}
+                        className="w-7 h-7 rounded flex items-center justify-center"
+                        style={{ backgroundColor: '#e53935' + '20', color: '#e53935' }}>🗑</button>
                     </div>
-                    <span className="text-sm font-bold w-16 text-right" style={{ color: '#f5f5f5' }}>{fmt(item.precioUnitario * item.cantidad)}</span>
-                    <button onClick={() => setItems((prev) => prev.filter((i) => i.producto.id !== item.producto.id))}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center"
-                      style={{ backgroundColor: '#e53935' + '20', color: '#e53935' }}>🗑</button>
+                    <p className="text-xs mb-2" style={{ color: '#6b7280' }}>Precio:</p>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {PRECIOS_EVENTO.map((precio) => (
+                        <button key={precio} onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, precioUnitario: precio } : i))}
+                          className="px-3 py-1.5 rounded-lg border text-xs font-bold"
+                          style={{
+                            backgroundColor: item.precioUnitario === precio ? '#e53935' : 'transparent',
+                            borderColor: item.precioUnitario === precio ? '#e53935' : '#2a2a2a',
+                            color: item.precioUnitario === precio ? 'white' : '#9ca3af',
+                          }}>
+                          {fmt(precio)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))}
+                          className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
+                        <span className="w-8 text-center font-extrabold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
+                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))}
+                          className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                      </div>
+                      <p className="font-extrabold" style={{ color: '#f5f5f5' }}>{fmt(item.precioUnitario * item.cantidad)}</p>
+                    </div>
                   </div>
                 ))}
 
