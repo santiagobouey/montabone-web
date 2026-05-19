@@ -178,10 +178,18 @@ export default function ProspectosPage() {
     }
   }
 
-  const filtrados = prospectos.filter((p) =>
+  const hoy = new Date().toISOString().split('T')[0];
+
+  const filtrar = (lista: Prospecto[]) => lista.filter((p) =>
     (p.nombre_local || '').toLowerCase().includes(busqueda.toLowerCase()) ||
     (p.nombre_contacto || '').toLowerCase().includes(busqueda.toLowerCase())
   );
+
+  const paraInsistir = prospectos.filter((p) => p.proxima_visita && p.proxima_visita <= hoy);
+  const potenciales = filtrar(prospectos.filter((p) => p.estado === 'potencial'));
+  const contactados = filtrar(prospectos.filter((p) => p.estado === 'contactado'));
+  const pendientes = filtrar(prospectos.filter((p) => p.estado === 'pendiente'));
+  const cerrados = filtrar(prospectos.filter((p) => p.estado === 'cerrado'));
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -195,35 +203,60 @@ export default function ProspectosPage() {
         <button onClick={abrirNuevo} className="px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>+ Nuevo</button>
       </div>
 
+      {/* Alerta de seguimiento */}
+      {paraInsistir.length > 0 && (
+        <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#9c27b0' + '15', borderColor: '#9c27b0' + '60', borderLeftWidth: 4, borderLeftColor: '#9c27b0' }}>
+          <p className="font-bold text-sm mb-2" style={{ color: '#9c27b0' }}>🔔 {paraInsistir.length} prospecto{paraInsistir.length > 1 ? 's' : ''} para volver a contactar</p>
+          {paraInsistir.map((p) => (
+            <button key={p.id} onClick={() => abrirEditar(p)}
+              className="w-full text-left py-1.5 px-2 rounded-lg mb-1 text-sm font-semibold"
+              style={{ backgroundColor: '#9c27b0' + '20', color: '#f5f5f5' }}>
+              📞 {p.nombre_local} — {p.nombre_contacto}
+            </button>
+          ))}
+        </div>
+      )}
+
       <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar prospecto..."
         className="w-full rounded-lg px-3 py-2 mb-4 text-sm border" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
 
-      <div className="space-y-3">
-        {filtrados.map((p) => {
-          const color = ESTADO_COLORS[p.estado] ?? '#6b7280';
-          return (
-            <div key={p.id} className="rounded-xl border p-4 cursor-pointer" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }} onClick={() => abrirEditar(p)}>
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-bold" style={{ color: '#f5f5f5' }}>{p.nombre_local || '—'}</p>
-                  <p className="text-sm" style={{ color: '#9ca3af' }}>{p.nombre_contacto}</p>
-                  <p className="text-xs" style={{ color: '#6b7280' }}>{p.telefono} · {p.direccion}</p>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    <span className="text-xs px-2 py-0.5 rounded-full border" style={{ color, borderColor: color + '40', backgroundColor: color + '15' }}>{p.estado}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#2a2a2a', color: '#9ca3af' }}>{TIPO_LABELS[p.tipo] ?? p.tipo}</span>
-                    {p.proxima_visita && (
-                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#9c27b0' + '20', color: '#9c27b0' }}>
-                        📅 Insistir: {new Date(p.proxima_visita + 'T12:00:00').toLocaleDateString('es-CL')}
-                      </span>
-                    )}
+      <div className="space-y-6">
+        {[
+          { label: '🔵 Potenciales', lista: potenciales, color: '#2196f3' },
+          { label: '🟠 Contactados', lista: contactados, color: '#ff9800' },
+          { label: '🟣 Pendientes de seguimiento', lista: pendientes, color: '#9c27b0' },
+          { label: '✅ Cerrados / No interesados', lista: cerrados, color: '#6b7280' },
+        ].map(({ label, lista, color }) => lista.length > 0 && (
+          <div key={label}>
+            <p className="text-xs font-bold uppercase mb-2" style={{ color }}>{label} ({lista.length})</p>
+            <div className="space-y-2">
+              {lista.map((p) => (
+                <div key={p.id} className="rounded-xl border p-4 cursor-pointer" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }} onClick={() => abrirEditar(p)}>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-bold" style={{ color: '#f5f5f5' }}>{p.nombre_local || '—'}</p>
+                      <p className="text-sm" style={{ color: '#9ca3af' }}>{p.nombre_contacto}</p>
+                      <p className="text-xs" style={{ color: '#6b7280' }}>{p.telefono} · {p.direccion}</p>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#2a2a2a', color: '#9ca3af' }}>{TIPO_LABELS[p.tipo] ?? p.tipo}</span>
+                        {p.proxima_visita && (
+                          <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{
+                            backgroundColor: p.proxima_visita <= hoy ? '#e53935' + '20' : '#9c27b0' + '20',
+                            color: p.proxima_visita <= hoy ? '#e53935' : '#9c27b0',
+                          }}>
+                            📅 {p.proxima_visita <= hoy ? '¡Contactar!' : `Insistir: ${new Date(p.proxima_visita + 'T12:00:00').toLocaleDateString('es-CL')}`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {p.muestra_entregada && <span className="text-xs px-2 py-1 rounded-full font-semibold" style={{ backgroundColor: '#4caf50' + '20', color: '#4caf50' }}>🎁 Muestra</span>}
                   </div>
                 </div>
-                {p.muestra_entregada && <span className="text-xs px-2 py-1 rounded-full font-semibold" style={{ backgroundColor: '#4caf50' + '20', color: '#4caf50' }}>🎁 Muestra</span>}
-              </div>
+              ))}
             </div>
-          );
-        })}
-        {filtrados.length === 0 && <div className="text-center py-16" style={{ color: '#6b7280' }}>No hay prospectos</div>}
+          </div>
+        ))}
+        {prospectos.length === 0 && <div className="text-center py-16" style={{ color: '#6b7280' }}>No hay prospectos</div>}
       </div>
 
       {showModal && (

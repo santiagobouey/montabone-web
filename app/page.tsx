@@ -20,6 +20,7 @@ interface Stats {
   ventasHoy: number;
   totalPorCobrar: number;
   prospectosPorContactar: number;
+  prospectosParaInsistir: { id: string; nombre_local: string; nombre_contacto: string }[];
   stockBajo: Producto[];
   stockTotal: number;
   totalMuestras: number;
@@ -47,13 +48,14 @@ export default function DashboardPage() {
           supabase.from('pedidos').select('id').in('estado', ['pendiente', 'preparado']),
           supabase.from('pedidos').select('total').eq('fecha', hoy).eq('estado', 'pagado'),
           supabase.from('pedidos').select('total').in('estado', ['pendiente', 'preparado', 'entregado']),
-          supabase.from('prospectos').select('id').in('estado', ['potencial', 'contactado']),
+          supabase.from('prospectos').select('id, nombre_local, nombre_contacto, proxima_visita').in('estado', ['potencial', 'contactado', 'pendiente']),
           supabase.from('productos').select('*').order('nombre'),
           supabase.from('muestras').select('cantidad, producto:productos(nombre)'),
           supabase.from('clientes').select('id, nombre, tipo, activo_manual'),
           supabase.from('pedidos').select('cliente_id, fecha').order('fecha', { ascending: false }),
         ]);
 
+        const hoy = new Date().toISOString().split('T')[0];
         const prods = productosRes.data || [];
         const muestrasData = muestrasRes.data || [];
         const clientes = clientesRes.data || [];
@@ -89,7 +91,8 @@ export default function DashboardPage() {
           pedidosPendientes: pedidosRes.data?.length || 0,
           ventasHoy: (ventasRes.data || []).reduce((s, p) => s + p.total, 0),
           totalPorCobrar: (cobroRes.data || []).reduce((s, p) => s + p.total, 0),
-          prospectosPorContactar: prospectoRes.data?.length || 0,
+          prospectosPorContactar: (prospectoRes.data || []).filter((p) => !p.proxima_visita || p.proxima_visita > hoy).length,
+          prospectosParaInsistir: (prospectoRes.data || []).filter((p) => p.proxima_visita && p.proxima_visita <= hoy),
           stockBajo: prods.filter((p) => p.stock <= 10),
           stockTotal: prods.reduce((s, p) => s + p.stock, 0),
           totalMuestras: muestrasData.reduce((s, m) => s + (m.cantidad || 0), 0),
@@ -139,6 +142,20 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Alerta prospectos para insistir */}
+      {(stats?.prospectosParaInsistir.length ?? 0) > 0 && (
+        <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#9c27b0' + '15', borderColor: '#9c27b0' + '60', borderLeftWidth: 4, borderLeftColor: '#9c27b0' }}>
+          <p className="font-bold text-sm mb-2" style={{ color: '#9c27b0' }}>
+            🔔 {stats!.prospectosParaInsistir.length} prospecto{stats!.prospectosParaInsistir.length > 1 ? 's' : ''} para volver a contactar hoy
+          </p>
+          {stats!.prospectosParaInsistir.map((p) => (
+            <p key={p.id} className="text-sm py-1" style={{ color: '#f5f5f5' }}>
+              📞 <span className="font-semibold">{p.nombre_local}</span> — {p.nombre_contacto}
+            </p>
+          ))}
+        </div>
+      )}
 
       {/* Puntos de venta */}
       <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
