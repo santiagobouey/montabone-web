@@ -33,6 +33,8 @@ export default function ProspectosPage() {
   const [editando, setEditando] = useState<Prospecto | null>(null);
   const [confirmandoEliminar, setConfirmandoEliminar] = useState(false);
   const [confirmandoConvertir, setConfirmandoConvertir] = useState(false);
+  const [confirmandoNoInteres, setConfirmandoNoInteres] = useState(false);
+  const [confirmandoInsistir, setConfirmandoInsistir] = useState(false);
 
   const [nombreLocal, setNombreLocal] = useState('');
   const [nombreContacto, setNombreContacto] = useState('');
@@ -57,6 +59,8 @@ export default function ProspectosPage() {
     setShowModal(false);
     setConfirmandoEliminar(false);
     setConfirmandoConvertir(false);
+    setConfirmandoNoInteres(false);
+    setConfirmandoInsistir(false);
   }
 
   function abrirNuevo() {
@@ -64,6 +68,7 @@ export default function ProspectosPage() {
     setDireccion(''); setComuna(''); setTipo('otro'); setEstado('potencial');
     setObservaciones(''); setMuestraEntregada(false);
     setConfirmandoEliminar(false); setConfirmandoConvertir(false);
+    setConfirmandoNoInteres(false); setConfirmandoInsistir(false);
     setShowModal(true);
   }
 
@@ -76,6 +81,7 @@ export default function ProspectosPage() {
     setTipo(p.tipo ?? 'otro'); setEstado(p.estado ?? 'potencial');
     setObservaciones(p.observaciones || ''); setMuestraEntregada(p.muestra_entregada ?? false);
     setConfirmandoEliminar(false); setConfirmandoConvertir(false);
+    setConfirmandoNoInteres(false); setConfirmandoInsistir(false);
     setShowModal(true);
   }
 
@@ -147,6 +153,31 @@ export default function ProspectosPage() {
     setConvirtiendo(false);
   }
 
+  async function handleNoInteres() {
+    if (!editando) return;
+    try {
+      await supabase.from('prospectos').update({ estado: 'cerrado', proxima_visita: null }).eq('id', editando.id);
+      cerrarModal();
+      await fetchProspectos();
+    } catch (e: unknown) {
+      alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
+    }
+  }
+
+  async function handleInsistir() {
+    if (!editando) return;
+    const fecha = new Date();
+    fecha.setMonth(fecha.getMonth() + 2);
+    const proximaVisita = fecha.toISOString().split('T')[0];
+    try {
+      await supabase.from('prospectos').update({ estado: 'pendiente', proxima_visita: proximaVisita }).eq('id', editando.id);
+      cerrarModal();
+      await fetchProspectos();
+    } catch (e: unknown) {
+      alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
+    }
+  }
+
   const filtrados = prospectos.filter((p) =>
     (p.nombre_local || '').toLowerCase().includes(busqueda.toLowerCase()) ||
     (p.nombre_contacto || '').toLowerCase().includes(busqueda.toLowerCase())
@@ -177,9 +208,14 @@ export default function ProspectosPage() {
                   <p className="font-bold" style={{ color: '#f5f5f5' }}>{p.nombre_local || '—'}</p>
                   <p className="text-sm" style={{ color: '#9ca3af' }}>{p.nombre_contacto}</p>
                   <p className="text-xs" style={{ color: '#6b7280' }}>{p.telefono} · {p.direccion}</p>
-                  <div className="flex gap-2 mt-1">
+                  <div className="flex flex-wrap gap-2 mt-1">
                     <span className="text-xs px-2 py-0.5 rounded-full border" style={{ color, borderColor: color + '40', backgroundColor: color + '15' }}>{p.estado}</span>
                     <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#2a2a2a', color: '#9ca3af' }}>{TIPO_LABELS[p.tipo] ?? p.tipo}</span>
+                    {p.proxima_visita && (
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#9c27b0' + '20', color: '#9c27b0' }}>
+                        📅 Insistir: {new Date(p.proxima_visita + 'T12:00:00').toLocaleDateString('es-CL')}
+                      </span>
+                    )}
                   </div>
                 </div>
                 {p.muestra_entregada && <span className="text-xs px-2 py-1 rounded-full font-semibold" style={{ backgroundColor: '#4caf50' + '20', color: '#4caf50' }}>🎁 Muestra</span>}
@@ -262,60 +298,78 @@ export default function ProspectosPage() {
               {saving ? 'Guardando...' : 'GUARDAR'}
             </button>
 
-            {/* Convertir a cliente */}
-            {editando && !confirmandoConvertir && !confirmandoEliminar && (
-              <button onClick={() => setConfirmandoConvertir(true)}
-                className="w-full py-3 rounded-lg font-bold text-sm border mb-2"
-                style={{ color: '#4caf50', borderColor: '#4caf50' + '40', backgroundColor: '#4caf50' + '10' }}>
-                ✅ Pasar a lista de clientes
-              </button>
+            {/* Acciones (solo al editar) */}
+            {editando && !confirmandoConvertir && !confirmandoNoInteres && !confirmandoInsistir && !confirmandoEliminar && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase" style={{ color: '#6b7280' }}>Acciones</p>
+
+                <button onClick={() => setConfirmandoConvertir(true)}
+                  className="w-full py-3 rounded-lg font-bold text-sm border"
+                  style={{ color: '#4caf50', borderColor: '#4caf50' + '40', backgroundColor: '#4caf50' + '10' }}>
+                  ✅ Pasar a lista de clientes
+                </button>
+
+                <button onClick={() => setConfirmandoInsistir(true)}
+                  className="w-full py-3 rounded-lg font-bold text-sm border"
+                  style={{ color: '#9c27b0', borderColor: '#9c27b0' + '40', backgroundColor: '#9c27b0' + '10' }}>
+                  📅 Volver a insistir en 2 meses
+                </button>
+
+                <button onClick={() => setConfirmandoNoInteres(true)}
+                  className="w-full py-3 rounded-lg font-bold text-sm border"
+                  style={{ color: '#ff9800', borderColor: '#ff9800' + '40', backgroundColor: '#ff9800' + '10' }}>
+                  ❌ No le interesó
+                </button>
+
+                <button onClick={() => setConfirmandoEliminar(true)}
+                  className="w-full py-3 rounded-lg font-bold text-sm border"
+                  style={{ color: '#e53935', borderColor: '#e53935' + '40', backgroundColor: '#e53935' + '10' }}>
+                  🗑 Eliminar prospecto
+                </button>
+              </div>
             )}
 
+            {/* Confirmar: pasar a cliente */}
             {editando && confirmandoConvertir && (
-              <div className="rounded-lg border p-3 mb-2" style={{ borderColor: '#4caf50' + '60', backgroundColor: '#4caf50' + '10' }}>
-                <p className="text-sm font-semibold text-center mb-3" style={{ color: '#f5f5f5' }}>
-                  ¿Agregar {editando.nombre_local} como cliente?
-                </p>
+              <div className="rounded-lg border p-3" style={{ borderColor: '#4caf50' + '60', backgroundColor: '#4caf50' + '10' }}>
+                <p className="text-sm font-semibold text-center mb-3" style={{ color: '#f5f5f5' }}>¿Agregar {editando.nombre_local} como cliente?</p>
                 <div className="flex gap-2">
-                  <button onClick={() => setConfirmandoConvertir(false)}
-                    className="flex-1 py-2 rounded-lg font-bold text-sm border"
-                    style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>
-                    Cancelar
-                  </button>
-                  <button onClick={handleConvertirACliente} disabled={convirtiendo}
-                    className="flex-1 py-2 rounded-lg font-bold text-sm text-white disabled:opacity-40"
-                    style={{ backgroundColor: '#4caf50' }}>
-                    {convirtiendo ? 'Pasando...' : 'Sí, pasar'}
-                  </button>
+                  <button onClick={() => setConfirmandoConvertir(false)} className="flex-1 py-2 rounded-lg font-bold text-sm border" style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>Cancelar</button>
+                  <button onClick={handleConvertirACliente} disabled={convirtiendo} className="flex-1 py-2 rounded-lg font-bold text-sm text-white disabled:opacity-40" style={{ backgroundColor: '#4caf50' }}>{convirtiendo ? 'Pasando...' : 'Sí, pasar'}</button>
                 </div>
               </div>
             )}
 
-            {/* Eliminar */}
-            {editando && !confirmandoEliminar && !confirmandoConvertir && (
-              <button onClick={() => setConfirmandoEliminar(true)}
-                className="w-full py-3 rounded-lg font-bold text-sm border"
-                style={{ color: '#e53935', borderColor: '#e53935' + '40', backgroundColor: '#e53935' + '10' }}>
-                🗑 Eliminar prospecto
-              </button>
+            {/* Confirmar: insistir en 2 meses */}
+            {editando && confirmandoInsistir && (
+              <div className="rounded-lg border p-3" style={{ borderColor: '#9c27b0' + '60', backgroundColor: '#9c27b0' + '10' }}>
+                <p className="text-sm font-semibold text-center mb-1" style={{ color: '#f5f5f5' }}>¿Marcar para volver a contactar en 2 meses?</p>
+                <p className="text-xs text-center mb-3" style={{ color: '#9ca3af' }}>Se guardará la fecha de seguimiento en el prospecto</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmandoInsistir(false)} className="flex-1 py-2 rounded-lg font-bold text-sm border" style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>Cancelar</button>
+                  <button onClick={handleInsistir} className="flex-1 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#9c27b0' }}>Sí, agendar</button>
+                </div>
+              </div>
             )}
 
+            {/* Confirmar: no le interesó */}
+            {editando && confirmandoNoInteres && (
+              <div className="rounded-lg border p-3" style={{ borderColor: '#ff9800' + '60', backgroundColor: '#ff9800' + '10' }}>
+                <p className="text-sm font-semibold text-center mb-3" style={{ color: '#f5f5f5' }}>¿Marcar {editando.nombre_local} como no interesado?</p>
+                <div className="flex gap-2">
+                  <button onClick={() => setConfirmandoNoInteres(false)} className="flex-1 py-2 rounded-lg font-bold text-sm border" style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>Cancelar</button>
+                  <button onClick={handleNoInteres} className="flex-1 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#ff9800' }}>Sí, marcar</button>
+                </div>
+              </div>
+            )}
+
+            {/* Confirmar: eliminar */}
             {editando && confirmandoEliminar && (
               <div className="rounded-lg border p-3" style={{ borderColor: '#e53935' + '60', backgroundColor: '#e53935' + '10' }}>
-                <p className="text-sm font-semibold text-center mb-3" style={{ color: '#f5f5f5' }}>
-                  ¿Eliminar a {editando.nombre_local}?
-                </p>
+                <p className="text-sm font-semibold text-center mb-3" style={{ color: '#f5f5f5' }}>¿Eliminar a {editando.nombre_local}?</p>
                 <div className="flex gap-2">
-                  <button onClick={() => setConfirmandoEliminar(false)}
-                    className="flex-1 py-2 rounded-lg font-bold text-sm border"
-                    style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>
-                    Cancelar
-                  </button>
-                  <button onClick={handleEliminar}
-                    className="flex-1 py-2 rounded-lg font-bold text-sm text-white"
-                    style={{ backgroundColor: '#e53935' }}>
-                    Sí, eliminar
-                  </button>
+                  <button onClick={() => setConfirmandoEliminar(false)} className="flex-1 py-2 rounded-lg font-bold text-sm border" style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>Cancelar</button>
+                  <button onClick={handleEliminar} className="flex-1 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#e53935' }}>Sí, eliminar</button>
                 </div>
               </div>
             )}

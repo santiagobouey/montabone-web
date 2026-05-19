@@ -64,5 +64,6 @@ export interface Prospecto {
   estado: EstadoProspecto;
   observaciones: string | null;
   muestra_entregada: boolean;
+  proxima_visita: string | null;
   created_at: string;
 }
