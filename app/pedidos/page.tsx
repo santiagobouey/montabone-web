@@ -14,7 +14,7 @@ const ESTADO_COLORS: Record<string, string> = {
 };
 
 const ESTADOS: EstadoPedido[] = ['pendiente', 'preparado', 'entregado', 'pagado'];
-const PRECIOS_EVENTO = [3300, 3990, 4990, 4995, 5990];
+const PRECIOS_EVENTO = [2940, 3300, 3990, 4990, 4995, 5990];
 
 interface ItemPedido {
   producto: Producto;
@@ -40,6 +40,7 @@ export default function PedidosPage() {
   const [saving, setSaving] = useState(false);
   const [tipoModal, setTipoModal] = useState<'pedido' | 'evento'>('pedido');
   const [editandoPedido, setEditandoPedido] = useState<Pedido | null>(null);
+  const [conIva, setConIva] = useState(true);
 
   // Form pedido
   const [clienteId, setClienteId] = useState('');
@@ -92,7 +93,7 @@ export default function PedidosPage() {
     setClienteId(''); setVendedor(''); setObservaciones('');
     setDireccion(''); setTelefono('');
     setFecha(new Date().toISOString().split('T')[0]);
-    setEventoId('');
+    setEventoId(''); setConIva(true);
     setShowModal(true);
   }
 
@@ -132,7 +133,7 @@ export default function PedidosPage() {
   }
 
   const neto = items.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0);
-  const total = tipoModal === 'pedido' ? Math.round(neto * 1.19) : neto;
+  const total = (tipoModal === 'pedido' && conIva) ? Math.round(neto * 1.19) : neto;
 
   async function handleGuardarPedido() {
     if (!clienteId || items.length === 0 || !vendedor) return;
@@ -434,10 +435,20 @@ export default function PedidosPage() {
                   </div>
                 ))}
 
+                {/* Toggle IVA */}
+                <button onClick={() => setConIva(!conIva)}
+                  className="w-full flex items-center justify-between p-3 rounded-lg border mb-3"
+                  style={{ backgroundColor: conIva ? '#2196f3' + '10' : '#1c1c1c', borderColor: conIva ? '#2196f3' : '#2a2a2a' }}>
+                  <span className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>Incluir IVA 19%</span>
+                  <div className="w-10 h-5 rounded-full flex items-center px-0.5" style={{ backgroundColor: conIva ? '#2196f3' : '#2a2a2a' }}>
+                    <div className="w-4 h-4 rounded-full bg-white transition-transform" style={{ transform: conIva ? 'translateX(20px)' : 'translateX(0)' }} />
+                  </div>
+                </button>
+
                 {items.length > 0 && (
                   <div className="mb-3 p-3 rounded-lg" style={{ backgroundColor: '#1c1c1c' }}>
                     <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>Neto</span><span style={{ color: '#f5f5f5' }}>{fmt(neto)}</span></div>
-                    <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>IVA 19%</span><span style={{ color: '#f5f5f5' }}>{fmt(total - neto)}</span></div>
+                    {conIva && <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>IVA 19%</span><span style={{ color: '#f5f5f5' }}>{fmt(total - neto)}</span></div>}
                     <div className="flex justify-between font-bold"><span style={{ color: '#6b7280' }}>TOTAL</span><span className="text-xl" style={{ color: '#f5f5f5' }}>{fmt(total)}</span></div>
                   </div>
                 )}
