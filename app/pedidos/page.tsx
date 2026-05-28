@@ -33,6 +33,7 @@ interface VentaDetalle {
   fecha: string;
   total: number;
   vendedor: string | null;
+  nombre_comprador: string | null;
   observaciones: string | null;
   items: { nombre: string; cantidad: number; precio_unitario: number }[];
 }
@@ -62,6 +63,9 @@ export default function PedidosPage() {
   const [items, setItems] = useState<ItemPedido[]>([]);
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
 
+  // Form detalle
+  const [nombreComprador, setNombreComprador] = useState('');
+
   // Form evento
   const [eventoId, setEventoId] = useState('');
   const [showNuevoEvento, setShowNuevoEvento] = useState(false);
@@ -88,18 +92,19 @@ export default function PedidosPage() {
     try {
       const { data } = await supabase
         .from('ventas_detalle')
-        .select('id, fecha, total, vendedor, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
+        .select('id, fecha, total, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
         .order('fecha', { ascending: false })
         .limit(30);
       if (data) {
         const mapped: VentaDetalle[] = (data as unknown as Array<{
-          id: string; fecha: string; total: number; vendedor: string | null; observaciones: string | null;
+          id: string; fecha: string; total: number; vendedor: string | null; nombre_comprador: string | null; observaciones: string | null;
           items: Array<{ cantidad: number; precio_unitario: number; producto: { nombre: string } | null }>;
         }>).map((v) => ({
           id: v.id,
           fecha: v.fecha,
           total: v.total,
           vendedor: v.vendedor,
+          nombre_comprador: v.nombre_comprador,
           observaciones: v.observaciones,
           items: (v.items || []).map((i) => ({
             nombre: i.producto?.nombre ?? '—',
@@ -133,7 +138,7 @@ export default function PedidosPage() {
     setClienteId(''); setVendedor(''); setObservaciones('');
     setDireccion(''); setTelefono('');
     setFecha(new Date().toISOString().split('T')[0]);
-    setEventoId(''); setConIva(true);
+    setEventoId(''); setConIva(true); setNombreComprador('');
     setShowModal(true);
   }
 
@@ -269,6 +274,7 @@ export default function PedidosPage() {
           fecha,
           total: totalVenta,
           vendedor: vendedor || null,
+          nombre_comprador: nombreComprador || null,
           observaciones: observaciones || null,
         })
         .select('id')
@@ -383,8 +389,11 @@ export default function PedidosPage() {
                   <div className="flex justify-between items-start mb-1">
                     <div>
                       <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>
-                        {new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-CL')}
+                        {v.nombre_comprador || new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-CL')}
                         {v.vendedor ? ` · ${v.vendedor}` : ''}
+                      </p>
+                      <p className="text-xs" style={{ color: '#6b7280' }}>
+                        {new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-CL')}
                       </p>
                       {v.observaciones && (
                         <p className="text-xs" style={{ color: '#6b7280' }}>{v.observaciones}</p>
@@ -692,6 +701,12 @@ export default function PedidosPage() {
               <>
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha</label>
                 <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Nombre del comprador (opcional)</label>
+                <input value={nombreComprador} onChange={(e) => setNombreComprador(e.target.value)}
+                  placeholder="Ej: María González..."
+                  className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+                  style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
 
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Vendedor (opcional)</label>
                 <div className="flex gap-2 mb-3">
