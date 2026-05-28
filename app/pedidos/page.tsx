@@ -32,6 +32,7 @@ interface VentaDetalle {
   id: string;
   fecha: string;
   total: number;
+  estado: string;
   vendedor: string | null;
   nombre_comprador: string | null;
   observaciones: string | null;
@@ -92,17 +93,18 @@ export default function PedidosPage() {
     try {
       const { data } = await supabase
         .from('ventas_detalle')
-        .select('id, fecha, total, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
+        .select('id, fecha, total, estado, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
         .order('fecha', { ascending: false })
         .limit(30);
       if (data) {
         const mapped: VentaDetalle[] = (data as unknown as Array<{
-          id: string; fecha: string; total: number; vendedor: string | null; nombre_comprador: string | null; observaciones: string | null;
+          id: string; fecha: string; total: number; estado: string; vendedor: string | null; nombre_comprador: string | null; observaciones: string | null;
           items: Array<{ cantidad: number; precio_unitario: number; producto: { nombre: string } | null }>;
         }>).map((v) => ({
           id: v.id,
           fecha: v.fecha,
           total: v.total,
+          estado: v.estado,
           vendedor: v.vendedor,
           nombre_comprador: v.nombre_comprador,
           observaciones: v.observaciones,
@@ -273,6 +275,7 @@ export default function PedidosPage() {
         .insert({
           fecha,
           total: totalVenta,
+          estado: 'pendiente',
           vendedor: vendedor || null,
           nombre_comprador: nombreComprador || null,
           observaciones: observaciones || null,
@@ -332,6 +335,11 @@ export default function PedidosPage() {
   async function cambiarEstado(id: string, estado: EstadoPedido) {
     await supabase.from('pedidos').update({ estado }).eq('id', id);
     await fetchPedidos();
+  }
+
+  async function cambiarEstadoDetalle(id: string, estado: string) {
+    await supabase.from('ventas_detalle').update({ estado }).eq('id', id);
+    await fetchVentasDetalle();
   }
 
   const pedidosFiltrados = filtro === 'todos' ? pedidos : pedidos.filter((p) => p.estado === filtro);
@@ -399,13 +407,32 @@ export default function PedidosPage() {
                         <p className="text-xs" style={{ color: '#6b7280' }}>{v.observaciones}</p>
                       )}
                     </div>
-                    <p className="font-extrabold text-sm" style={{ color: '#9c27b0' }}>{fmt(v.total)}</p>
+                    <div className="flex flex-col items-end gap-1">
+                      <p className="font-extrabold text-sm" style={{ color: '#9c27b0' }}>{fmt(v.total)}</p>
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full border"
+                        style={{
+                          color: ESTADO_COLORS[v.estado] || '#6b7280',
+                          backgroundColor: (ESTADO_COLORS[v.estado] || '#6b7280') + '20',
+                          borderColor: (ESTADO_COLORS[v.estado] || '#6b7280') + '40',
+                        }}>
+                        {v.estado.toUpperCase()}
+                      </span>
+                    </div>
                   </div>
                   {v.items.map((item, i) => (
                     <p key={i} className="text-xs" style={{ color: '#6b7280' }}>
                       {item.nombre} — {item.cantidad} u. · {fmt(item.precio_unitario)} c/u
                     </p>
                   ))}
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    {ESTADOS.filter((e) => e !== v.estado).map((e) => (
+                      <button key={e} onClick={() => cambiarEstadoDetalle(v.id, e)}
+                        className="text-xs px-2 py-1 rounded border"
+                        style={{ borderColor: ESTADO_COLORS[e] + '60', color: ESTADO_COLORS[e], backgroundColor: ESTADO_COLORS[e] + '10' }}>
+                        → {e}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
