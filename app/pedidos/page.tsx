@@ -14,7 +14,7 @@ const ESTADO_COLORS: Record<string, string> = {
 };
 
 const ESTADOS: EstadoPedido[] = ['pendiente', 'preparado', 'entregado', 'pagado'];
-const PRECIOS_EVENTO = [2940, 3300, 3990, 4990, 4995, 5990];
+const PRECIOS_PRESET = [2940, 3300, 3990, 4990, 4995, 5990];
 
 interface ItemPedido {
   producto: Producto;
@@ -28,19 +28,30 @@ interface Evento {
   fecha: string;
 }
 
+interface VentaDetalle {
+  id: string;
+  fecha: string;
+  total: number;
+  vendedor: string | null;
+  observaciones: string | null;
+  items: { nombre: string; cantidad: number; precio_unitario: number }[];
+}
+
 export default function PedidosPage() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [todosProductos, setTodosProductos] = useState<Producto[]>([]);
   const [eventos, setEventos] = useState<Evento[]>([]);
+  const [ventasDetalle, setVentasDetalle] = useState<VentaDetalle[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<EstadoPedido | 'todos'>('todos');
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [tipoModal, setTipoModal] = useState<'pedido' | 'evento'>('pedido');
+  const [tipoModal, setTipoModal] = useState<'pedido' | 'evento' | 'detalle'>('pedido');
   const [editandoPedido, setEditandoPedido] = useState<Pedido | null>(null);
   const [conIva, setConIva] = useState(true);
+  const [verVentasDetalle, setVerVentasDetalle] = useState(false);
 
   // Form pedido
   const [clienteId, setClienteId] = useState('');
@@ -73,20 +84,49 @@ export default function PedidosPage() {
     setEventos(data || []);
   }, []);
 
+  const fetchVentasDetalle = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('ventas_detalle')
+        .select('id, fecha, total, vendedor, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
+        .order('fecha', { ascending: false })
+        .limit(30);
+      if (data) {
+        const mapped: VentaDetalle[] = (data as unknown as Array<{
+          id: string; fecha: string; total: number; vendedor: string | null; observaciones: string | null;
+          items: Array<{ cantidad: number; precio_unitario: number; producto: { nombre: string } | null }>;
+        }>).map((v) => ({
+          id: v.id,
+          fecha: v.fecha,
+          total: v.total,
+          vendedor: v.vendedor,
+          observaciones: v.observaciones,
+          items: (v.items || []).map((i) => ({
+            nombre: i.producto?.nombre ?? '—',
+            cantidad: i.cantidad,
+            precio_unitario: i.precio_unitario,
+          })),
+        }));
+        setVentasDetalle(mapped);
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
     Promise.all([
       fetchPedidos(),
       fetchEventos(),
+      fetchVentasDetalle(),
       supabase.from('clientes').select('*').order('nombre'),
       supabase.from('productos').select('*').order('nombre'),
-    ]).then(([, , c, p]) => {
+    ]).then(([, , , c, p]) => {
       setClientes(c.data || []);
       setTodosProductos(p.data || []);
       setProductos(p.data || []);
     }).finally(() => setLoading(false));
-  }, [fetchPedidos, fetchEventos]);
+  }, [fetchPedidos, fetchEventos, fetchVentasDetalle]);
 
-  function abrirNuevo(tipo: 'pedido' | 'evento') {
+  function abrirNuevo(tipo: 'pedido' | 'evento' | 'detalle') {
     setEditandoPedido(null);
     setTipoModal(tipo);
     setItems([]);
@@ -106,7 +146,6 @@ export default function PedidosPage() {
     setTelefono(p.telefono);
     setObservaciones(p.observaciones || '');
     setFecha(p.fecha);
-    // Cargar items del detalle
     const itemsCargados: ItemPedido[] = (p.detalle || []).map((d) => ({
       producto: d.producto as unknown as Producto,
       cantidad: d.cantidad,
@@ -128,7 +167,7 @@ export default function PedidosPage() {
     else setItems((prev) => [...prev, { producto: p, cantidad: 1, precioUnitario: precioDefault ?? p.precio }]);
   }
 
-  function setPrecioEvento(productoId: string, precio: number) {
+  function setPrecioItem(productoId: string, precio: number) {
     setItems((prev) => prev.map((i) => i.producto.id === productoId ? { ...i, precioUnitario: precio } : i));
   }
 
@@ -140,31 +179,25 @@ export default function PedidosPage() {
     setSaving(true);
     try {
       if (editandoPedido) {
-        // EDITAR pedido existente
         const { error: pe } = await supabase.from('pedidos').update({
           cliente_id: clienteId, fecha, total, direccion, telefono,
           vendedor, observaciones: observaciones || null,
         }).eq('id', editandoPedido.id);
         if (pe) throw new Error(pe.message);
 
-        // Restaurar stock de los items anteriores
         for (const d of (editandoPedido.detalle || [])) {
           const prod = d.producto as unknown as Producto;
           if (prod?.id) {
-            await supabase.from('productos')
-              .update({ stock: prod.stock + d.cantidad })
-              .eq('id', prod.id);
+            await supabase.from('productos').update({ stock: prod.stock + d.cantidad }).eq('id', prod.id);
           }
         }
 
-        // Borrar detalle anterior e insertar el nuevo
         await supabase.from('detalle_pedido').delete().eq('pedido_id', editandoPedido.id);
         const { error: de } = await supabase.from('detalle_pedido').insert(
           items.map((i) => ({ pedido_id: editandoPedido.id, producto_id: i.producto.id, cantidad: i.cantidad, precio_unitario: i.precioUnitario }))
         );
         if (de) throw new Error(de.message);
 
-        // Descontar nuevo stock
         for (const item of items) {
           const prodActual = todosProductos.find((p) => p.id === item.producto.id);
           if (prodActual) {
@@ -172,7 +205,6 @@ export default function PedidosPage() {
           }
         }
       } else {
-        // CREAR pedido nuevo
         const { data: pedido, error: pe } = await supabase.from('pedidos').insert({
           cliente_id: clienteId, fecha, total, direccion, telefono,
           estado: 'pendiente', vendedor, observaciones: observaciones || null,
@@ -204,20 +236,66 @@ export default function PedidosPage() {
     if (!eventoId || items.length === 0) return;
     setSaving(true);
     try {
-      const { error } = await supabase.from('ventas_evento').insert(
-        items.map((i) => ({
+      for (const item of items) {
+        const { error } = await supabase.from('ventas_evento').insert({
           evento_id: eventoId,
-          producto_id: i.producto.id,
-          cantidad: i.cantidad,
-          precio_unitario: i.precioUnitario,
-          total: i.precioUnitario * i.cantidad,
-        }))
-      );
-      if (error) throw new Error(error.message);
+          producto_id: item.producto.id,
+          cantidad: item.cantidad,
+          precio_unitario: item.precioUnitario,
+          total: item.precioUnitario * item.cantidad,
+        });
+        if (error) throw new Error(`Error guardando ${item.producto.nombre}: ${error.message} (code: ${error.code})`);
+      }
       for (const item of items) {
         await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
       }
+      setItems([]);
       setShowModal(false);
+      alert('✅ Venta registrada correctamente');
+    } catch (e: unknown) {
+      alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
+    }
+    setSaving(false);
+  }
+
+  async function handleGuardarDetalle() {
+    if (items.length === 0) return;
+    setSaving(true);
+    try {
+      const totalVenta = conIva ? Math.round(neto * 1.19) : neto;
+      const { data: venta, error: ve } = await supabase
+        .from('ventas_detalle')
+        .insert({
+          fecha,
+          total: totalVenta,
+          vendedor: vendedor || null,
+          observaciones: observaciones || null,
+        })
+        .select('id')
+        .single();
+      if (ve) throw new Error(ve.message);
+      if (!venta) throw new Error('No se creó la venta');
+
+      const { error: ie } = await supabase.from('items_venta_detalle').insert(
+        items.map((i) => ({
+          venta_id: venta.id,
+          producto_id: i.producto.id,
+          cantidad: i.cantidad,
+          precio_unitario: i.precioUnitario,
+        }))
+      );
+      if (ie) throw new Error(ie.message);
+
+      for (const item of items) {
+        await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
+      }
+
+      setItems([]);
+      setShowModal(false);
+      await fetchVentasDetalle();
+      const { data: p } = await supabase.from('productos').select('*').order('nombre');
+      if (p) { setTodosProductos(p); setProductos(p); }
+      alert('✅ Venta al detalle registrada');
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
@@ -252,16 +330,24 @@ export default function PedidosPage() {
 
   const pedidosFiltrados = filtro === 'todos' ? pedidos : pedidos.filter((p) => p.estado === filtro);
 
+  // Totales ventas detalle hoy
+  const hoy = new Date().toISOString().split('T')[0];
+  const ventasDetalleHoy = ventasDetalle.filter((v) => v.fecha === hoy);
+  const totalDetalleHoy = ventasDetalleHoy.reduce((s, v) => s + v.total, 0);
+
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Pedidos</h1>
+          <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Ventas</h1>
           <p className="text-sm" style={{ color: '#6b7280' }}>{pedidos.length} pedidos en total</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
+          <button onClick={() => abrirNuevo('detalle')} className="px-3 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#9c27b0' }}>
+            🛒 Detalle
+          </button>
           <button onClick={() => abrirNuevo('evento')} className="px-3 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#ff9800' }}>
             🎪 Evento
           </button>
@@ -271,7 +357,54 @@ export default function PedidosPage() {
         </div>
       </div>
 
-      {/* Filtros */}
+      {/* Ventas al detalle - resumen */}
+      {ventasDetalle.length > 0 && (
+        <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#9c27b0' + '40', borderLeftWidth: 4, borderLeftColor: '#9c27b0' }}>
+          <button
+            onClick={() => setVerVentasDetalle(!verVentasDetalle)}
+            className="w-full px-4 py-3 flex items-center justify-between"
+          >
+            <div className="flex items-center gap-3">
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#9c27b0' }}>🛒 Ventas al Detalle</p>
+              {totalDetalleHoy > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ backgroundColor: '#9c27b0' + '20', color: '#9c27b0' }}>
+                  Hoy: {fmt(totalDetalleHoy)}
+                </span>
+              )}
+            </div>
+            <span style={{ color: '#6b7280' }}>{verVentasDetalle ? '▲' : '▼'}</span>
+          </button>
+
+          {verVentasDetalle && (
+            <div className="border-t" style={{ borderColor: '#2a2a2a' }}>
+              {ventasDetalle.map((v, idx) => (
+                <div key={v.id} className="px-4 py-3"
+                  style={{ borderBottom: idx < ventasDetalle.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+                  <div className="flex justify-between items-start mb-1">
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>
+                        {new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-CL')}
+                        {v.vendedor ? ` · ${v.vendedor}` : ''}
+                      </p>
+                      {v.observaciones && (
+                        <p className="text-xs" style={{ color: '#6b7280' }}>{v.observaciones}</p>
+                      )}
+                    </div>
+                    <p className="font-extrabold text-sm" style={{ color: '#9c27b0' }}>{fmt(v.total)}</p>
+                  </div>
+                  {v.items.map((item, i) => (
+                    <p key={i} className="text-xs" style={{ color: '#6b7280' }}>
+                      {item.nombre} — {item.cantidad} u. · {fmt(item.precio_unitario)} c/u
+                    </p>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Filtros pedidos */}
       <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
         {(['todos', ...ESTADOS] as const).map((e) => (
           <button key={e} onClick={() => setFiltro(e)}
@@ -286,7 +419,7 @@ export default function PedidosPage() {
         ))}
       </div>
 
-      {/* Lista */}
+      {/* Lista pedidos */}
       <div className="space-y-3">
         {pedidosFiltrados.map((p) => {
           const color = ESTADO_COLORS[p.estado] || '#6b7280';
@@ -336,13 +469,13 @@ export default function PedidosPage() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modal principal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
           <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[90vh]" style={{ backgroundColor: '#141414' }}>
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>
-                {editandoPedido ? '✏️ Editar Pedido' : tipoModal === 'pedido' ? 'Nuevo Pedido' : '🎪 Venta en Evento'}
+                {editandoPedido ? '✏️ Editar Pedido' : tipoModal === 'pedido' ? 'Nuevo Pedido' : tipoModal === 'evento' ? '🎪 Venta en Evento' : '🛒 Venta al Detalle'}
               </h2>
               <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
             </div>
@@ -350,21 +483,25 @@ export default function PedidosPage() {
             {/* Toggle tipo (solo en nuevo) */}
             {!editandoPedido && (
               <div className="flex gap-2 mb-4">
-                {(['pedido', 'evento'] as const).map((t) => (
-                  <button key={t} onClick={() => { setTipoModal(t); setItems([]); }}
-                    className="flex-1 py-2 rounded-lg border text-sm font-semibold"
-                    style={{
-                      backgroundColor: tipoModal === t ? (t === 'pedido' ? '#e53935' : '#ff9800') : 'transparent',
-                      borderColor: tipoModal === t ? (t === 'pedido' ? '#e53935' : '#ff9800') : '#2a2a2a',
-                      color: tipoModal === t ? 'white' : '#6b7280',
-                    }}>
-                    {t === 'pedido' ? '📦 Pedido' : '🎪 Evento'}
-                  </button>
-                ))}
+                {(['pedido', 'evento', 'detalle'] as const).map((t) => {
+                  const colors: Record<string, string> = { pedido: '#e53935', evento: '#ff9800', detalle: '#9c27b0' };
+                  const labels: Record<string, string> = { pedido: '📦 Pedido', evento: '🎪 Evento', detalle: '🛒 Detalle' };
+                  return (
+                    <button key={t} onClick={() => { setTipoModal(t); setItems([]); }}
+                      className="flex-1 py-2 rounded-lg border text-xs font-semibold"
+                      style={{
+                        backgroundColor: tipoModal === t ? colors[t] : 'transparent',
+                        borderColor: tipoModal === t ? colors[t] : '#2a2a2a',
+                        color: tipoModal === t ? 'white' : '#6b7280',
+                      }}>
+                      {labels[t]}
+                    </button>
+                  );
+                })}
               </div>
             )}
 
-            {/* FORM PEDIDO */}
+            {/* ===== FORM PEDIDO ===== */}
             {(tipoModal === 'pedido' || editandoPedido) && (
               <>
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cliente</label>
@@ -410,8 +547,8 @@ export default function PedidosPage() {
                     </div>
                     <p className="text-xs mb-2" style={{ color: '#6b7280' }}>Precio:</p>
                     <div className="flex flex-wrap gap-2 mb-2">
-                      {PRECIOS_EVENTO.map((precio) => (
-                        <button key={precio} onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, precioUnitario: precio } : i))}
+                      {PRECIOS_PRESET.map((precio) => (
+                        <button key={precio} onClick={() => setPrecioItem(item.producto.id, precio)}
                           className="px-3 py-1.5 rounded-lg border text-xs font-bold"
                           style={{
                             backgroundColor: item.precioUnitario === precio ? '#e53935' : 'transparent',
@@ -435,7 +572,6 @@ export default function PedidosPage() {
                   </div>
                 ))}
 
-                {/* Toggle IVA */}
                 <button onClick={() => setConIva(!conIva)}
                   className="w-full flex items-center justify-between p-3 rounded-lg border mb-3"
                   style={{ backgroundColor: conIva ? '#2196f3' + '10' : '#1c1c1c', borderColor: conIva ? '#2196f3' : '#2a2a2a' }}>
@@ -464,7 +600,7 @@ export default function PedidosPage() {
               </>
             )}
 
-            {/* FORM EVENTO */}
+            {/* ===== FORM EVENTO ===== */}
             {tipoModal === 'evento' && !editandoPedido && (
               <>
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Evento</label>
@@ -489,7 +625,7 @@ export default function PedidosPage() {
                   {todosProductos.map((p) => {
                     const sel = items.find((i) => i.producto.id === p.id);
                     return (
-                      <button key={p.id} onClick={() => toggleProducto(p, PRECIOS_EVENTO[1])}
+                      <button key={p.id} onClick={() => toggleProducto(p, PRECIOS_PRESET[1])}
                         className="px-3 py-1.5 rounded-lg border text-xs font-medium"
                         style={{ backgroundColor: sel ? '#ff9800' + '20' : '#1c1c1c', borderColor: sel ? '#ff9800' : '#2a2a2a', color: sel ? '#ff9800' : '#9ca3af' }}>
                         {p.nombre} ({p.stock})
@@ -508,8 +644,8 @@ export default function PedidosPage() {
                     </div>
                     <p className="text-xs mb-2" style={{ color: '#6b7280' }}>Precio:</p>
                     <div className="flex flex-wrap gap-2 mb-2">
-                      {PRECIOS_EVENTO.map((precio) => (
-                        <button key={precio} onClick={() => setPrecioEvento(item.producto.id, precio)}
+                      {PRECIOS_PRESET.map((precio) => (
+                        <button key={precio} onClick={() => setPrecioItem(item.producto.id, precio)}
                           className="px-3 py-1.5 rounded-lg border text-xs font-bold"
                           style={{
                             backgroundColor: item.precioUnitario === precio ? '#ff9800' : 'transparent',
@@ -536,7 +672,7 @@ export default function PedidosPage() {
                 {items.length > 0 && (
                   <div className="flex justify-between items-center py-3 mb-3 border-t" style={{ borderColor: '#2a2a2a' }}>
                     <span className="font-bold" style={{ color: '#6b7280' }}>TOTAL</span>
-                    <span className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(total)}</span>
+                    <span className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(neto)}</span>
                   </div>
                 )}
 
@@ -548,6 +684,99 @@ export default function PedidosPage() {
                 {!eventoId && items.length > 0 && (
                   <p className="text-xs text-center mt-2" style={{ color: '#e53935' }}>Selecciona un evento primero</p>
                 )}
+              </>
+            )}
+
+            {/* ===== FORM DETALLE ===== */}
+            {tipoModal === 'detalle' && !editandoPedido && (
+              <>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha</label>
+                <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Vendedor (opcional)</label>
+                <div className="flex gap-2 mb-3">
+                  {['Santiago', 'Hernán'].map((v) => (
+                    <button key={v} onClick={() => setVendedor(vendedor === v ? '' : v)} className="flex-1 py-2 rounded-lg border text-sm font-semibold"
+                      style={{ backgroundColor: vendedor === v ? '#9c27b0' : 'transparent', borderColor: vendedor === v ? '#9c27b0' : '#2a2a2a', color: vendedor === v ? 'white' : '#6b7280' }}>
+                      {v}
+                    </button>
+                  ))}
+                </div>
+
+                <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Productos</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {todosProductos.map((p) => {
+                    const sel = items.find((i) => i.producto.id === p.id);
+                    return (
+                      <button key={p.id} onClick={() => toggleProducto(p, PRECIOS_PRESET[1])}
+                        className="px-3 py-1.5 rounded-lg border text-xs font-medium"
+                        style={{ backgroundColor: sel ? '#9c27b0' + '20' : '#1c1c1c', borderColor: sel ? '#9c27b0' : '#2a2a2a', color: sel ? '#9c27b0' : '#9ca3af' }}>
+                        {p.nombre} ({p.stock})
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {items.map((item) => (
+                  <div key={item.producto.id} className="mb-3 p-3 rounded-lg border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a' }}>
+                    <div className="flex justify-between items-center mb-2">
+                      <p className="font-semibold text-sm" style={{ color: '#f5f5f5' }}>{item.producto.nombre}</p>
+                      <button onClick={() => setItems((prev) => prev.filter((i) => i.producto.id !== item.producto.id))}
+                        className="w-7 h-7 rounded flex items-center justify-center"
+                        style={{ backgroundColor: '#e53935' + '20', color: '#e53935' }}>🗑</button>
+                    </div>
+                    <p className="text-xs mb-2" style={{ color: '#6b7280' }}>Precio:</p>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {PRECIOS_PRESET.map((precio) => (
+                        <button key={precio} onClick={() => setPrecioItem(item.producto.id, precio)}
+                          className="px-3 py-1.5 rounded-lg border text-xs font-bold"
+                          style={{
+                            backgroundColor: item.precioUnitario === precio ? '#9c27b0' : 'transparent',
+                            borderColor: item.precioUnitario === precio ? '#9c27b0' : '#2a2a2a',
+                            color: item.precioUnitario === precio ? 'white' : '#9ca3af',
+                          }}>
+                          {fmt(precio)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))}
+                          className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
+                        <span className="w-8 text-center font-extrabold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
+                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))}
+                          className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                      </div>
+                      <p className="font-extrabold" style={{ color: '#9c27b0' }}>{fmt(item.precioUnitario * item.cantidad)}</p>
+                    </div>
+                  </div>
+                ))}
+
+                <button onClick={() => setConIva(!conIva)}
+                  className="w-full flex items-center justify-between p-3 rounded-lg border mb-3"
+                  style={{ backgroundColor: conIva ? '#9c27b0' + '10' : '#1c1c1c', borderColor: conIva ? '#9c27b0' : '#2a2a2a' }}>
+                  <span className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>Incluir IVA 19%</span>
+                  <div className="w-10 h-5 rounded-full flex items-center px-0.5" style={{ backgroundColor: conIva ? '#9c27b0' : '#2a2a2a' }}>
+                    <div className="w-4 h-4 rounded-full bg-white transition-transform" style={{ transform: conIva ? 'translateX(20px)' : 'translateX(0)' }} />
+                  </div>
+                </button>
+
+                {items.length > 0 && (
+                  <div className="mb-3 p-3 rounded-lg" style={{ backgroundColor: '#1c1c1c' }}>
+                    <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>Neto</span><span style={{ color: '#f5f5f5' }}>{fmt(neto)}</span></div>
+                    {conIva && <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>IVA 19%</span><span style={{ color: '#f5f5f5' }}>{fmt(Math.round(neto * 1.19) - neto)}</span></div>}
+                    <div className="flex justify-between font-bold"><span style={{ color: '#6b7280' }}>TOTAL</span><span className="text-xl" style={{ color: '#9c27b0' }}>{fmt(conIva ? Math.round(neto * 1.19) : neto)}</span></div>
+                  </div>
+                )}
+
+                <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Observaciones..." rows={2}
+                  className="w-full rounded-lg px-3 py-2 mb-4 text-sm border resize-none" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+                <button onClick={handleGuardarDetalle} disabled={saving || items.length === 0}
+                  className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40"
+                  style={{ backgroundColor: '#9c27b0' }}>
+                  {saving ? 'Guardando...' : '✅ REGISTRAR VENTA AL DETALLE'}
+                </button>
               </>
             )}
           </div>

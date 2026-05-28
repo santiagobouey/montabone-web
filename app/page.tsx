@@ -55,7 +55,6 @@ export default function DashboardPage() {
           supabase.from('pedidos').select('cliente_id, fecha').order('fecha', { ascending: false }),
         ]);
 
-        const hoy = new Date().toISOString().split('T')[0];
         const prods = productosRes.data || [];
         const muestrasData = muestrasRes.data || [];
         const clientes = clientesRes.data || [];
