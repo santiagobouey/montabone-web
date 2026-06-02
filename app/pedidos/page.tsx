@@ -227,6 +227,23 @@ export default function PedidosPage() {
         for (const item of items) {
           await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
         }
+
+        // Email nuevo pedido
+        const clienteData = clientes.find((c) => c.id === clienteId);
+        await enviarEmail('nuevo_pedido', {
+          cliente: clienteData?.nombre ?? '—',
+          rut: clienteData?.rut ?? null,
+          razon_social: clienteData?.razon_social ?? null,
+          vendedor,
+          fecha,
+          total,
+          direccion,
+          productos: items.map((i) => ({
+            nombre: i.producto.nombre,
+            cantidad: i.cantidad,
+            subtotal: i.precioUnitario * i.cantidad,
+          })),
+        });
       }
 
       setShowModal(false);
@@ -332,8 +349,29 @@ export default function PedidosPage() {
     setSavingEvento(false);
   }
 
+  async function enviarEmail(tipo: string, pedidoData: object) {
+    try {
+      await fetch('/api/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo, pedido: pedidoData }),
+      });
+    } catch {}
+  }
+
   async function cambiarEstado(id: string, estado: EstadoPedido) {
     await supabase.from('pedidos').update({ estado }).eq('id', id);
+    if (estado === 'pagado') {
+      const p = pedidos.find((x) => x.id === id);
+      if (p) {
+        await enviarEmail('pedido_pagado', {
+          cliente: p.cliente?.nombre ?? '—',
+          vendedor: p.vendedor,
+          fecha: p.fecha,
+          total: p.total,
+        });
+      }
+    }
     await fetchPedidos();
   }
 

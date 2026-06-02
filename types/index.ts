@@ -21,6 +21,8 @@ export interface Cliente {
   observaciones: string | null;
   muestra_entregada: boolean;
   activo_manual: boolean | null;
+  rut: string | null;
+  razon_social: string | null;
   created_at: string;
 }
 

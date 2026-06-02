@@ -42,6 +42,8 @@ export default function ClientesPage() {
   const [observaciones, setObservaciones] = useState('');
   const [muestraEntregada, setMuestraEntregada] = useState(false);
   const [activoManual, setActivoManual] = useState<boolean | null>(null);
+  const [rut, setRut] = useState('');
+  const [razonSocial, setRazonSocial] = useState('');
 
   const fetchClientes = useCallback(async () => {
     try {
@@ -63,7 +65,7 @@ export default function ClientesPage() {
   function abrirNuevo() {
     setEditando(null); setNombre(''); setNombreContacto(''); setTelefono(''); setDireccion('');
     setComuna(''); setTipo('otro'); setObservaciones(''); setMuestraEntregada(false);
-    setActivoManual(null); setConfirmandoEliminar(false);
+    setActivoManual(null); setRut(''); setRazonSocial(''); setConfirmandoEliminar(false);
     setShowModal(true);
   }
 
@@ -72,7 +74,8 @@ export default function ClientesPage() {
     setDireccion(c.direccion); setComuna('');
     setTipo(c.tipo ?? 'otro');
     setObservaciones(c.observaciones || ''); setMuestraEntregada(c.muestra_entregada ?? false);
-    setActivoManual(c.activo_manual ?? null); setConfirmandoEliminar(false);
+    setActivoManual(c.activo_manual ?? null); setRut(c.rut || ''); setRazonSocial(c.razon_social || '');
+    setConfirmandoEliminar(false);
     setShowModal(true);
   }
 
@@ -111,6 +114,8 @@ export default function ClientesPage() {
         observaciones: observaciones || null,
         muestra_entregada: muestraEntregada ?? false,
         activo_manual: activoManual ?? null,
+        rut: rut || null,
+        razon_social: razonSocial || null,
       };
       if (editando) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editando.id);
@@ -254,6 +259,19 @@ export default function ClientesPage() {
                   {TIPO_LABELS[t]}
                 </button>
               ))}
+            </div>
+
+            <div className="flex gap-2 mb-3">
+              <div className="flex-1">
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>RUT</label>
+                <input value={rut} onChange={(e) => setRut(e.target.value)} placeholder="Ej: 12.345.678-9"
+                  className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Razón Social</label>
+                <input value={razonSocial} onChange={(e) => setRazonSocial(e.target.value)} placeholder="Ej: Carnes del Sur SpA"
+                  className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+              </div>
             </div>
 
             <div className="mb-3">
