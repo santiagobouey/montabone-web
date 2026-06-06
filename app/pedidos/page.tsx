@@ -66,6 +66,7 @@ export default function PedidosPage() {
 
   // Form detalle
   const [nombreComprador, setNombreComprador] = useState('');
+  const [estadoDetalle, setEstadoDetalle] = useState<string>('pendiente');
 
   // Form evento
   const [eventoId, setEventoId] = useState('');
@@ -140,7 +141,7 @@ export default function PedidosPage() {
     setClienteId(''); setVendedor(''); setObservaciones('');
     setDireccion(''); setTelefono('');
     setFecha(new Date().toISOString().split('T')[0]);
-    setEventoId(''); setConIva(true); setNombreComprador('');
+    setEventoId(''); setConIva(true); setNombreComprador(''); setEstadoDetalle('pendiente');
     setShowModal(true);
   }
 
@@ -292,7 +293,7 @@ export default function PedidosPage() {
         .insert({
           fecha,
           total: totalVenta,
-          estado: 'pendiente',
+          estado: estadoDetalle,
           vendedor: vendedor || null,
           nombre_comprador: nombreComprador || null,
           observaciones: observaciones || null,
@@ -850,7 +851,22 @@ export default function PedidosPage() {
                 )}
 
                 <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Observaciones..." rows={2}
-                  className="w-full rounded-lg px-3 py-2 mb-4 text-sm border resize-none" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+                  className="w-full rounded-lg px-3 py-2 mb-3 text-sm border resize-none" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+                <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Estado</label>
+                <div className="flex gap-2 mb-4 flex-wrap">
+                  {ESTADOS.map((e) => (
+                    <button key={e} onClick={() => setEstadoDetalle(e)}
+                      className="flex-1 py-2 rounded-lg border text-xs font-semibold"
+                      style={{
+                        backgroundColor: estadoDetalle === e ? ESTADO_COLORS[e] : 'transparent',
+                        borderColor: estadoDetalle === e ? ESTADO_COLORS[e] : '#2a2a2a',
+                        color: estadoDetalle === e ? 'white' : '#6b7280',
+                      }}>
+                      {e.charAt(0).toUpperCase() + e.slice(1)}
+                    </button>
+                  ))}
+                </div>
 
                 <button onClick={handleGuardarDetalle} disabled={saving || items.length === 0}
                   className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40"
