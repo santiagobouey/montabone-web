@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { Producto } from '@/types';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
-const PRECIOS = [3300, 3990, 4990, 4995, 5990];
+const PRECIOS = [2940, 3300, 3760, 3990, 4990, 4995, 5990];
 
 interface Evento {
   id: string;
