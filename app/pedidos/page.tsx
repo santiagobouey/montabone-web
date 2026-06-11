@@ -15,6 +15,7 @@ const ESTADO_COLORS: Record<string, string> = {
 
 const ESTADOS: EstadoPedido[] = ['pendiente', 'preparado', 'entregado', 'pagado'];
 const PRECIOS_PRESET = [2940, 3300, 3760, 3990, 4990, 4995, 5990];
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 interface ItemPedido {
   producto: Producto;
@@ -49,6 +50,13 @@ export default function PedidosPage() {
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<EstadoPedido | 'todos'>('todos');
   const [showModal, setShowModal] = useState(false);
+  const [showSelectorMes, setShowSelectorMes] = useState(false);
+
+  const hoyDate = new Date();
+  const [mesFiltro, setMesFiltro] = useState(hoyDate.getMonth());
+  const [anioFiltro, setAnioFiltro] = useState(hoyDate.getFullYear());
+  const inicioMes = `${anioFiltro}-${String(mesFiltro + 1).padStart(2, '0')}-01`;
+  const finMes = `${anioFiltro}-${String(mesFiltro + 1).padStart(2, '0')}-${String(new Date(anioFiltro, mesFiltro + 1, 0).getDate()).padStart(2, '0')}`;
   const [saving, setSaving] = useState(false);
   const [tipoModal, setTipoModal] = useState<'pedido' | 'evento' | 'detalle'>('pedido');
   const [editandoPedido, setEditandoPedido] = useState<Pedido | null>(null);
@@ -75,11 +83,13 @@ export default function PedidosPage() {
   const [nuevoFecha, setNuevoFecha] = useState(new Date().toISOString().split('T')[0]);
   const [savingEvento, setSavingEvento] = useState(false);
 
-  const fetchPedidos = useCallback(async () => {
+  const fetchPedidos = useCallback(async (inicio: string, fin: string) => {
     try {
       const { data } = await supabase
         .from('pedidos')
         .select('*, cliente:clientes(nombre), detalle:detalle_pedido(*, producto:productos(*))')
+        .gte('fecha', inicio)
+        .lte('fecha', fin)
         .order('fecha', { ascending: false });
       setPedidos(data || []);
     } catch {}
@@ -90,13 +100,14 @@ export default function PedidosPage() {
     setEventos(data || []);
   }, []);
 
-  const fetchVentasDetalle = useCallback(async () => {
+  const fetchVentasDetalle = useCallback(async (inicio: string, fin: string) => {
     try {
       const { data } = await supabase
         .from('ventas_detalle')
         .select('id, fecha, total, estado, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
-        .order('fecha', { ascending: false })
-        .limit(30);
+        .gte('fecha', inicio)
+        .lte('fecha', fin)
+        .order('fecha', { ascending: false });
       if (data) {
         const mapped: VentaDetalle[] = (data as unknown as Array<{
           id: string; fecha: string; total: number; estado: string; vendedor: string | null; nombre_comprador: string | null; observaciones: string | null;
@@ -122,9 +133,9 @@ export default function PedidosPage() {
 
   useEffect(() => {
     Promise.all([
-      fetchPedidos(),
+      fetchPedidos(inicioMes, finMes),
       fetchEventos(),
-      fetchVentasDetalle(),
+      fetchVentasDetalle(inicioMes, finMes),
       supabase.from('clientes').select('*').order('nombre'),
       supabase.from('productos').select('*').order('nombre'),
     ]).then(([, , , c, p]) => {
@@ -132,7 +143,8 @@ export default function PedidosPage() {
       setTodosProductos(p.data || []);
       setProductos(p.data || []);
     }).finally(() => setLoading(false));
-  }, [fetchPedidos, fetchEventos, fetchVentasDetalle]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesFiltro, anioFiltro]);
 
   function abrirNuevo(tipo: 'pedido' | 'evento' | 'detalle') {
     setEditandoPedido(null);
@@ -249,7 +261,7 @@ export default function PedidosPage() {
       }
 
       setShowModal(false);
-      await fetchPedidos();
+      await fetchPedidos(inicioMes, finMes);
       const { data: p } = await supabase.from('productos').select('*').order('nombre');
       if (p) { setTodosProductos(p); setProductos(p); }
     } catch (e: unknown) {
@@ -320,7 +332,7 @@ export default function PedidosPage() {
 
       setItems([]);
       setShowModal(false);
-      await fetchVentasDetalle();
+      await fetchVentasDetalle(inicioMes, finMes);
       const { data: p } = await supabase.from('productos').select('*').order('nombre');
       if (p) { setTodosProductos(p); setProductos(p); }
       alert('✅ Venta al detalle registrada');
@@ -374,29 +386,25 @@ export default function PedidosPage() {
         });
       }
     }
-    await fetchPedidos();
+    await fetchPedidos(inicioMes, finMes);
   }
 
   async function cambiarEstadoDetalle(id: string, estado: string) {
     await supabase.from('ventas_detalle').update({ estado }).eq('id', id);
-    await fetchVentasDetalle();
+    await fetchVentasDetalle(inicioMes, finMes);
   }
 
   const pedidosFiltrados = filtro === 'todos' ? pedidos : pedidos.filter((p) => p.estado === filtro);
 
-  // Totales ventas detalle hoy
-  const hoy = new Date().toISOString().split('T')[0];
-  const ventasDetalleHoy = ventasDetalle.filter((v) => v.fecha === hoy);
-  const totalDetalleHoy = ventasDetalleHoy.reduce((s, v) => s + v.total, 0);
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Ventas</h1>
-          <p className="text-sm" style={{ color: '#6b7280' }}>{pedidos.length} pedidos en total</p>
+          <p className="text-sm" style={{ color: '#6b7280' }}>{pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''} en {MESES[mesFiltro]}</p>
         </div>
         <div className="flex gap-2 flex-wrap justify-end">
           <button onClick={() => abrirNuevo('detalle')} className="px-3 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#9c27b0' }}>
@@ -409,6 +417,45 @@ export default function PedidosPage() {
             + Pedido
           </button>
         </div>
+      </div>
+
+      {/* Selector de mes */}
+      <div className="mb-4">
+        <button onClick={() => setShowSelectorMes(!showSelectorMes)}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-semibold"
+          style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }}>
+          📅 {MESES[mesFiltro]} {anioFiltro}
+          <span style={{ color: '#6b7280' }}>{showSelectorMes ? '▲' : '▼'}</span>
+        </button>
+
+        {showSelectorMes && (
+          <div className="mt-2 rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+            {/* Año */}
+            <div className="flex items-center justify-between mb-3">
+              <button onClick={() => setAnioFiltro((a) => a - 1)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center font-bold"
+                style={{ backgroundColor: '#1c1c1c', color: '#f5f5f5' }}>‹</button>
+              <p className="font-bold text-sm" style={{ color: '#6b7280' }}>{anioFiltro}</p>
+              <button onClick={() => setAnioFiltro((a) => a + 1)} disabled={anioFiltro >= hoyDate.getFullYear()}
+                className="w-8 h-8 rounded-lg flex items-center justify-center font-bold disabled:opacity-30"
+                style={{ backgroundColor: '#1c1c1c', color: '#f5f5f5' }}>›</button>
+            </div>
+            {/* Meses */}
+            <div className="grid grid-cols-4 gap-2">
+              {MESES.map((nombre, i) => {
+                const esFuturo = anioFiltro === hoyDate.getFullYear() && i > hoyDate.getMonth();
+                const activo = i === mesFiltro && anioFiltro === anioFiltro;
+                return (
+                  <button key={i} onClick={() => { if (!esFuturo) { setMesFiltro(i); setShowSelectorMes(false); } }} disabled={esFuturo}
+                    className="py-2 rounded-lg text-xs font-bold disabled:opacity-30"
+                    style={{ backgroundColor: activo ? '#e53935' : '#1c1c1c', color: activo ? 'white' : '#9ca3af' }}>
+                    {nombre.slice(0, 3)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Ventas al detalle - resumen */}

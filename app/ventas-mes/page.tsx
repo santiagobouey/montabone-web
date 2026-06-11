@@ -29,10 +29,23 @@ export default function VentasMesPage() {
   const [loading, setLoading] = useState(true);
 
   const hoy = new Date();
-  const mes = hoy.getMonth();
-  const anio = hoy.getFullYear();
+  const [mes, setMes] = useState(hoy.getMonth());
+  const [anio, setAnio] = useState(hoy.getFullYear());
+
   const inicioMes = `${anio}-${String(mes + 1).padStart(2, '0')}-01`;
   const finMes = `${anio}-${String(mes + 1).padStart(2, '0')}-${String(new Date(anio, mes + 1, 0).getDate()).padStart(2, '0')}`;
+
+  function mesAnterior() {
+    if (mes === 0) { setMes(11); setAnio((a) => a - 1); }
+    else setMes((m) => m - 1);
+  }
+
+  function mesSiguiente() {
+    if (mes === 11) { setMes(0); setAnio((a) => a + 1); }
+    else setMes((m) => m + 1);
+  }
+
+  const esMesActual = mes === hoy.getMonth() && anio === hoy.getFullYear();
 
   useEffect(() => {
     async function load() {
@@ -136,10 +149,7 @@ export default function VentasMesPage() {
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Venta Mensual</h1>
-          <p className="text-sm mt-1" style={{ color: '#6b7280' }}>{MESES[mes]} {anio}</p>
-        </div>
+        <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Venta Mensual</h1>
         {totalGeneral > 0 && (
           <button onClick={exportarCSV}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white"
@@ -147,6 +157,37 @@ export default function VentasMesPage() {
             ⬇️ Exportar CSV
           </button>
         )}
+      </div>
+
+      {/* Selector de mes y año */}
+      <div className="rounded-xl border p-4 mb-6" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+        {/* Selector de año */}
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={() => setAnio((a) => a - 1)}
+            className="w-8 h-8 rounded-lg flex items-center justify-center font-bold"
+            style={{ backgroundColor: '#1c1c1c', color: '#f5f5f5' }}>‹</button>
+          <p className="font-bold text-sm" style={{ color: '#6b7280' }}>{anio}</p>
+          <button onClick={() => setAnio((a) => a + 1)} disabled={anio >= hoy.getFullYear()}
+            className="w-8 h-8 rounded-lg flex items-center justify-center font-bold disabled:opacity-30"
+            style={{ backgroundColor: '#1c1c1c', color: '#f5f5f5' }}>›</button>
+        </div>
+        {/* Grid de meses */}
+        <div className="grid grid-cols-4 gap-2">
+          {MESES.map((nombre, i) => {
+            const esFuturo = anio === hoy.getFullYear() && i > hoy.getMonth();
+            const activo = i === mes;
+            return (
+              <button key={i} onClick={() => !esFuturo && setMes(i)} disabled={esFuturo}
+                className="py-2 rounded-lg text-xs font-bold transition-colors disabled:opacity-30"
+                style={{
+                  backgroundColor: activo ? '#e53935' : '#1c1c1c',
+                  color: activo ? 'white' : '#9ca3af',
+                }}>
+                {nombre.slice(0, 3)}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Total general */}
