@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
-
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 interface ResumenMes {
@@ -16,8 +15,17 @@ interface ResumenMes {
   totalEventos: number;
 }
 
+interface FilaExport {
+  tipo: string;
+  fecha: string;
+  cliente: string;
+  productos: string;
+  total: number;
+}
+
 export default function VentasMesPage() {
   const [resumen, setResumen] = useState<ResumenMes | null>(null);
+  const [filasExport, setFilasExport] = useState<FilaExport[]>([]);
   const [loading, setLoading] = useState(true);
 
   const hoy = new Date();
@@ -32,35 +40,57 @@ export default function VentasMesPage() {
         const [pedidosRes, detalleRes, eventosRes] = await Promise.all([
           supabase
             .from('pedidos')
-            .select('total')
+            .select('fecha, total, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))')
             .eq('estado', 'pagado')
             .gte('fecha', inicioMes)
-            .lte('fecha', finMes),
+            .lte('fecha', finMes)
+            .order('fecha', { ascending: true }),
           supabase
             .from('ventas_detalle')
-            .select('total')
+            .select('fecha, total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
             .eq('estado', 'pagado')
             .gte('fecha', inicioMes)
-            .lte('fecha', finMes),
+            .lte('fecha', finMes)
+            .order('fecha', { ascending: true }),
           supabase
             .from('ventas_evento')
-            .select('total, evento:eventos(fecha)')
+            .select('total, cantidad, precio_unitario, producto:productos(nombre), evento:eventos(nombre, fecha)')
             .gte('eventos.fecha', inicioMes)
             .lte('eventos.fecha', finMes),
         ]);
 
-        const pedidos = pedidosRes.data || [];
-        const detalle = detalleRes.data || [];
-        const eventos = (eventosRes.data || []).filter((v: any) => v.evento);
+        const pedidos = (pedidosRes.data || []) as any[];
+        const detalle = (detalleRes.data || []) as any[];
+        const eventosRaw = ((eventosRes.data || []) as any[]).filter((v) => v.evento);
 
         setResumen({
           pedidos: pedidos.length,
           totalPedidos: pedidos.reduce((s, p) => s + p.total, 0),
           detalle: detalle.length,
           totalDetalle: detalle.reduce((s, v) => s + v.total, 0),
-          eventos: eventos.length,
-          totalEventos: eventos.reduce((s: number, v: any) => s + v.total, 0),
+          eventos: eventosRaw.length,
+          totalEventos: eventosRaw.reduce((s, v) => s + v.total, 0),
         });
+
+        // Armar filas para exportar
+        const filas: FilaExport[] = [];
+
+        for (const p of pedidos) {
+          const prods = (p.detalle || []).map((d: any) => `${d.producto?.nombre ?? '—'} x${d.cantidad}`).join(' | ');
+          filas.push({ tipo: 'Pedido', fecha: p.fecha, cliente: p.cliente?.nombre ?? '—', productos: prods, total: p.total });
+        }
+
+        for (const v of detalle) {
+          const prods = (v.items || []).map((i: any) => `${i.producto?.nombre ?? '—'} x${i.cantidad}`).join(' | ');
+          filas.push({ tipo: 'Venta al Detalle', fecha: v.fecha, cliente: v.nombre_comprador || 'Sin nombre', productos: prods, total: v.total });
+        }
+
+        for (const v of eventosRaw) {
+          filas.push({ tipo: 'Evento', fecha: v.evento?.fecha ?? '', cliente: v.evento?.nombre ?? '—', productos: `${v.producto?.nombre ?? '—'} x${v.cantidad}`, total: v.total });
+        }
+
+        filas.sort((a, b) => a.fecha.localeCompare(b.fecha));
+        setFilasExport(filas);
       } catch {}
       finally { setLoading(false); }
     }
@@ -69,13 +99,54 @@ export default function VentasMesPage() {
 
   const totalGeneral = (resumen?.totalPedidos ?? 0) + (resumen?.totalDetalle ?? 0) + (resumen?.totalEventos ?? 0);
 
+  function exportarCSV() {
+    const encabezado = ['Tipo', 'Fecha', 'Cliente / Comprador', 'Productos', 'Total'];
+    const filas = filasExport.map((f) => [
+      f.tipo,
+      new Date(f.fecha + 'T12:00:00').toLocaleDateString('es-CL'),
+      f.cliente,
+      f.productos,
+      Math.round(f.total).toString(),
+    ]);
+
+    const resumenFilas = [
+      [],
+      ['RESUMEN'],
+      ['Total Pedidos', '', '', '', Math.round(resumen?.totalPedidos ?? 0).toString()],
+      ['Total Venta al Detalle', '', '', '', Math.round(resumen?.totalDetalle ?? 0).toString()],
+      ['Total Eventos', '', '', '', Math.round(resumen?.totalEventos ?? 0).toString()],
+      ['TOTAL GENERAL', '', '', '', Math.round(totalGeneral).toString()],
+    ];
+
+    const contenido = [encabezado, ...filas, ...resumenFilas]
+      .map((fila) => fila.map((c) => `"${c}"`).join(','))
+      .join('\n');
+
+    const blob = new Blob(['﻿' + contenido], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ventas-${MESES[mes].toLowerCase()}-${anio}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Venta Mensual</h1>
-        <p className="text-sm mt-1" style={{ color: '#6b7280' }}>{MESES[mes]} {anio}</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Venta Mensual</h1>
+          <p className="text-sm mt-1" style={{ color: '#6b7280' }}>{MESES[mes]} {anio}</p>
+        </div>
+        {totalGeneral > 0 && (
+          <button onClick={exportarCSV}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white"
+            style={{ backgroundColor: '#2196f3' }}>
+            ⬇️ Exportar CSV
+          </button>
+        )}
       </div>
 
       {/* Total general */}
@@ -90,15 +161,11 @@ export default function VentasMesPage() {
       </div>
 
       {/* Desglose */}
-      <div className="space-y-3">
-
+      <div className="space-y-3 mb-6">
         {/* Pedidos */}
         <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
           <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-2">
-              <span>📦</span>
-              <p className="font-bold" style={{ color: '#f5f5f5' }}>Pedidos</p>
-            </div>
+            <div className="flex items-center gap-2"><span>📦</span><p className="font-bold" style={{ color: '#f5f5f5' }}>Pedidos</p></div>
             <p className="text-2xl font-extrabold" style={{ color: '#e53935' }}>{fmt(resumen?.totalPedidos ?? 0)}</p>
           </div>
           <p className="text-xs" style={{ color: '#6b7280' }}>{resumen?.pedidos ?? 0} pedido{resumen?.pedidos !== 1 ? 's' : ''} pagado{resumen?.pedidos !== 1 ? 's' : ''} este mes</p>
@@ -115,10 +182,7 @@ export default function VentasMesPage() {
         {/* Venta al detalle */}
         <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
           <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-2">
-              <span>🛒</span>
-              <p className="font-bold" style={{ color: '#f5f5f5' }}>Venta al Detalle</p>
-            </div>
+            <div className="flex items-center gap-2"><span>🛒</span><p className="font-bold" style={{ color: '#f5f5f5' }}>Venta al Detalle</p></div>
             <p className="text-2xl font-extrabold" style={{ color: '#9c27b0' }}>{fmt(resumen?.totalDetalle ?? 0)}</p>
           </div>
           <p className="text-xs" style={{ color: '#6b7280' }}>{resumen?.detalle ?? 0} venta{resumen?.detalle !== 1 ? 's' : ''} pagada{resumen?.detalle !== 1 ? 's' : ''} este mes</p>
@@ -135,10 +199,7 @@ export default function VentasMesPage() {
         {/* Eventos */}
         <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
           <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-2">
-              <span>🎪</span>
-              <p className="font-bold" style={{ color: '#f5f5f5' }}>Eventos</p>
-            </div>
+            <div className="flex items-center gap-2"><span>🎪</span><p className="font-bold" style={{ color: '#f5f5f5' }}>Eventos</p></div>
             <p className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(resumen?.totalEventos ?? 0)}</p>
           </div>
           <p className="text-xs" style={{ color: '#6b7280' }}>{resumen?.eventos ?? 0} venta{resumen?.eventos !== 1 ? 's' : ''} en evento este mes</p>
@@ -151,8 +212,37 @@ export default function VentasMesPage() {
             </div>
           )}
         </div>
-
       </div>
+
+      {/* Detalle de ventas */}
+      {filasExport.length > 0 && (
+        <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>Detalle de ventas</p>
+          </div>
+          {filasExport.map((f, i) => (
+            <div key={i} className="flex items-center justify-between px-4 py-3"
+              style={{ borderBottom: i < filasExport.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+              <div className="flex-1 min-w-0 mr-3">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-xs font-bold px-1.5 py-0.5 rounded"
+                    style={{
+                      backgroundColor: f.tipo === 'Pedido' ? '#e53935' + '20' : f.tipo === 'Venta al Detalle' ? '#9c27b0' + '20' : '#ff9800' + '20',
+                      color: f.tipo === 'Pedido' ? '#e53935' : f.tipo === 'Venta al Detalle' ? '#9c27b0' : '#ff9800',
+                    }}>
+                    {f.tipo === 'Pedido' ? '📦' : f.tipo === 'Venta al Detalle' ? '🛒' : '🎪'}
+                  </span>
+                  <p className="text-sm font-semibold truncate" style={{ color: '#f5f5f5' }}>{f.cliente}</p>
+                </div>
+                <p className="text-xs truncate" style={{ color: '#6b7280' }}>
+                  {new Date(f.fecha + 'T12:00:00').toLocaleDateString('es-CL')} · {f.productos}
+                </p>
+              </div>
+              <p className="font-extrabold text-sm whitespace-nowrap" style={{ color: '#4caf50' }}>{fmt(f.total)}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {totalGeneral === 0 && (
         <div className="text-center py-10 mt-4">
