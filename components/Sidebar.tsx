@@ -9,6 +9,7 @@ const nav = [
   { href: '/pedidos', label: 'Pedidos', icon: '📦' },
   { href: '/clientes', label: 'Clientes', icon: '👥' },
   { href: '/prospectos', label: 'Prospectos', icon: '🎯' },
+  { href: '/ventas-mes', label: 'Venta Mensual', icon: '📈' },
   { href: '/ventas-eventos', label: 'Eventos', icon: '🎪' },
   { href: '/inventario', label: 'Inventario', icon: '🗃️' },
   { href: '/cobros', label: 'Cobros', icon: '💰' },

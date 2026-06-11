@@ -235,6 +235,7 @@ export default function PedidosPage() {
           cliente: clienteData?.nombre ?? '—',
           rut: clienteData?.rut ?? null,
           razon_social: clienteData?.razon_social ?? null,
+          telefono: clienteData?.telefono ?? null,
           vendedor,
           fecha,
           total,

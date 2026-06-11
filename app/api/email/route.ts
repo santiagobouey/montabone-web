@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     let html = '';
 
     if (tipo === 'nuevo_pedido') {
-      const { cliente, rut, razon_social, vendedor, fecha, total, direccion, productos } = pedido;
+      const { cliente, rut, razon_social, telefono, vendedor, fecha, total, direccion, productos } = pedido;
       subject = `📦 Nuevo pedido — ${cliente}`;
       html = `
         <div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; background: #0a0a0a; color: #f5f5f5; padding: 24px; border-radius: 12px;">
@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
             <p style="margin: 0 0 6px; font-size: 20px; font-weight: bold;">${cliente}</p>
             ${razon_social ? `<p style="margin: 0 0 4px; color: #9ca3af; font-size: 13px;">Razón social: <strong style="color:#f5f5f5">${razon_social}</strong></p>` : ''}
             ${rut ? `<p style="margin: 0 0 4px; color: #9ca3af; font-size: 13px;">RUT: <strong style="color:#f5f5f5">${rut}</strong></p>` : ''}
+            ${telefono ? `<p style="margin: 0 0 4px; color: #9ca3af; font-size: 13px;">Teléfono: <strong style="color:#f5f5f5">${telefono}</strong></p>` : ''}
             <p style="margin: 0 0 4px; color: #9ca3af; font-size: 13px;">Dirección de despacho: <strong style="color:#f5f5f5">${direccion || '—'}</strong></p>
             <p style="margin: 0; color: #9ca3af; font-size: 13px;">Vendedor: <strong style="color:#f5f5f5">${vendedor}</strong></p>
           </div>
