@@ -62,6 +62,7 @@ export default function PedidosPage() {
   const [editandoPedido, setEditandoPedido] = useState<Pedido | null>(null);
   const [conIva, setConIva] = useState(true);
   const [verVentasDetalle, setVerVentasDetalle] = useState(false);
+  const [pedidoAEliminar, setPedidoAEliminar] = useState<Pedido | null>(null);
 
   // Form pedido
   const [clienteId, setClienteId] = useState('');
@@ -394,6 +395,20 @@ export default function PedidosPage() {
     await fetchVentasDetalle(inicioMes, finMes);
   }
 
+  async function eliminarPedido(p: Pedido) {
+    // Devolver stock
+    for (const d of (p.detalle || [])) {
+      const prod = d.producto as unknown as Producto;
+      if (prod?.id) {
+        await supabase.from('productos').update({ stock: prod.stock + d.cantidad }).eq('id', prod.id);
+      }
+    }
+    await supabase.from('detalle_pedido').delete().eq('pedido_id', p.id);
+    await supabase.from('pedidos').delete().eq('id', p.id);
+    setPedidoAEliminar(null);
+    await fetchPedidos(inicioMes, finMes);
+  }
+
   const pedidosFiltrados = filtro === 'todos' ? pedidos : pedidos.filter((p) => p.estado === filtro);
 
 
@@ -560,6 +575,11 @@ export default function PedidosPage() {
                     className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
                     style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>
                     ✏️
+                  </button>
+                  <button onClick={() => setPedidoAEliminar(p)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
+                    style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>
+                    🗑️
                   </button>
                   <span className="text-xs font-bold px-2 py-1 rounded-full border" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>
                     {p.estado.toUpperCase()}
@@ -923,6 +943,36 @@ export default function PedidosPage() {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmar eliminación */}
+      {pedidoAEliminar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: '#141414' }}>
+            <p className="text-lg font-bold mb-1" style={{ color: '#f5f5f5' }}>¿Eliminar pedido?</p>
+            <p className="text-sm mb-1" style={{ color: '#6b7280' }}>
+              Cliente: <strong style={{ color: '#f5f5f5' }}>{pedidoAEliminar.cliente?.nombre ?? '—'}</strong>
+            </p>
+            <p className="text-sm mb-4" style={{ color: '#6b7280' }}>
+              Total: <strong style={{ color: '#f5f5f5' }}>{fmt(pedidoAEliminar.total)}</strong>
+            </p>
+            <p className="text-xs mb-4 p-3 rounded-lg" style={{ backgroundColor: '#e5393515', color: '#e53935' }}>
+              ⚠️ Esta acción no se puede deshacer. El stock será devuelto automáticamente.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setPedidoAEliminar(null)}
+                className="flex-1 py-3 rounded-lg font-bold text-sm border"
+                style={{ borderColor: '#2a2a2a', color: '#6b7280' }}>
+                Cancelar
+              </button>
+              <button onClick={() => eliminarPedido(pedidoAEliminar)}
+                className="flex-1 py-3 rounded-lg font-bold text-sm text-white"
+                style={{ backgroundColor: '#e53935' }}>
+                Eliminar
+              </button>
+            </div>
           </div>
         </div>
       )}

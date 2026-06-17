@@ -5,6 +5,7 @@ export interface Producto {
   formato: string;
   stock: number;
   precio: number;
+  costo: number;
   fecha_ingreso: string;
   fecha_vencimiento: string | null;
   observaciones: string | null;

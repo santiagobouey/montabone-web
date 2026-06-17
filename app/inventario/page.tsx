@@ -18,6 +18,7 @@ export default function InventarioPage() {
   const [formato, setFormato] = useState('');
   const [stock, setStock] = useState('');
   const [precio, setPrecio] = useState('');
+  const [costo, setCosto] = useState('');
   const [fechaIngreso, setFechaIngreso] = useState(new Date().toISOString().split('T')[0]);
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [observaciones, setObservaciones] = useState('');
@@ -33,13 +34,14 @@ export default function InventarioPage() {
 
   function abrirNuevo() {
     setEditando(null); setNombre(''); setSku(''); setFormato(''); setStock('');
-    setPrecio(''); setFechaIngreso(new Date().toISOString().split('T')[0]); setFechaVencimiento(''); setObservaciones('');
+    setPrecio(''); setCosto(''); setFechaIngreso(new Date().toISOString().split('T')[0]); setFechaVencimiento(''); setObservaciones('');
     setShowModal(true);
   }
 
   function abrirEditar(p: Producto) {
     setEditando(p); setNombre(p.nombre); setSku(p.sku || ''); setFormato(p.formato);
-    setStock(String(p.stock)); setPrecio(String(p.precio)); setFechaIngreso(p.fecha_ingreso?.split('T')[0] || '');
+    setStock(String(p.stock)); setPrecio(String(p.precio)); setCosto(String(p.costo || ''));
+    setFechaIngreso(p.fecha_ingreso?.split('T')[0] || '');
     setFechaVencimiento(p.fecha_vencimiento?.split('T')[0] || ''); setObservaciones(p.observaciones || '');
     setShowModal(true);
   }
@@ -50,6 +52,7 @@ export default function InventarioPage() {
     try {
       const payload = {
         nombre, sku: sku || null, formato, stock: parseInt(stock), precio: parseInt(precio),
+        costo: costo ? parseInt(costo) : 0,
         fecha_ingreso: fechaIngreso, fecha_vencimiento: fechaVencimiento || null, observaciones: observaciones || null,
       };
       if (editando) await supabase.from('productos').update(payload).eq('id', editando.id);
@@ -80,7 +83,7 @@ export default function InventarioPage() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="font-bold" style={{ color: '#f5f5f5' }}>{p.nombre}</p>
-                  <p className="text-sm" style={{ color: '#6b7280' }}>{p.formato} · {fmt(p.precio)} c/u</p>
+                  <p className="text-sm" style={{ color: '#6b7280' }}>{p.formato} · {fmt(p.precio)} c/u {p.costo ? `· Costo: ${fmt(p.costo)}` : ''}</p>
                   {p.sku && <p className="text-xs" style={{ color: '#6b7280' }}>SKU: {p.sku}</p>}
                   {p.fecha_vencimiento && (
                     <p className="text-xs mt-1" style={{ color: '#ff9800' }}>
@@ -111,7 +114,8 @@ export default function InventarioPage() {
               { label: 'SKU (opcional)', value: sku, set: setSku },
               { label: 'Formato', value: formato, set: setFormato, placeholder: 'ej: 500g, 1kg' },
               { label: 'Stock (unidades)', value: stock, set: setStock, type: 'number' },
-              { label: 'Precio unitario', value: precio, set: setPrecio, type: 'number' },
+              { label: 'Precio de venta', value: precio, set: setPrecio, type: 'number' },
+              { label: 'Costo (precio de compra)', value: costo, set: setCosto, type: 'number' },
             ].map(({ label, value, set, type, placeholder }) => (
               <div key={label} className="mb-3">
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>{label}</label>
