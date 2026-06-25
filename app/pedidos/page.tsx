@@ -482,11 +482,6 @@ export default function PedidosPage() {
           >
             <div className="flex items-center gap-3">
               <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#9c27b0' }}>🛒 Ventas al Detalle</p>
-              {totalDetalleHoy > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ backgroundColor: '#9c27b0' + '20', color: '#9c27b0' }}>
-                  Hoy: {fmt(totalDetalleHoy)}
-                </span>
-              )}
             </div>
             <span style={{ color: '#6b7280' }}>{verVentasDetalle ? '▲' : '▼'}</span>
           </button>
