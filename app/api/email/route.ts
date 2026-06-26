@@ -59,6 +59,63 @@ export async function POST(req: NextRequest) {
           </div>
         </div>
       `;
+    } else if (tipo === 'periodo_cerrado') {
+      const { nombre, fecha_inicio, fecha_cierre, total_ventas, total_utilidad, total_pedidos, producto_mas_vendido, ticket_promedio, ventas_clientes } = pedido;
+      const margen = total_ventas > 0 ? Math.round((total_utilidad / total_ventas) * 100) : 0;
+      subject = `📊 Informe de Período — ${nombre}`;
+      html = `
+        <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto; background: #0a0a0a; color: #f5f5f5; padding: 24px; border-radius: 12px;">
+          <h2 style="color: #e53935; margin-bottom: 4px;">📊 Informe de Período</h2>
+          <p style="color: #6b7280; margin-top: 0; font-size: 14px;">${nombre}</p>
+          <p style="color: #6b7280; font-size: 13px; margin-top: 0;">${fecha_inicio ? new Date(fecha_inicio + 'T12:00:00').toLocaleDateString('es-CL') : '—'} → ${new Date(fecha_cierre + 'T12:00:00').toLocaleDateString('es-CL')}</p>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0;">
+            <div style="background: #141414; border-radius: 8px; padding: 16px;">
+              <p style="margin: 0 0 4px; color: #6b7280; font-size: 12px;">📈 VENTAS TOTALES</p>
+              <p style="margin: 0; font-size: 22px; font-weight: 900; color: #4caf50;">$${Math.round(total_ventas).toLocaleString('es-CL')}</p>
+            </div>
+            <div style="background: #141414; border-radius: 8px; padding: 16px;">
+              <p style="margin: 0 0 4px; color: #6b7280; font-size: 12px;">💰 UTILIDAD</p>
+              <p style="margin: 0; font-size: 22px; font-weight: 900; color: #2196f3;">$${Math.round(total_utilidad).toLocaleString('es-CL')}</p>
+            </div>
+            <div style="background: #141414; border-radius: 8px; padding: 16px;">
+              <p style="margin: 0 0 4px; color: #6b7280; font-size: 12px;">📦 PEDIDOS</p>
+              <p style="margin: 0; font-size: 22px; font-weight: 900; color: #e53935;">${total_pedidos}</p>
+            </div>
+            <div style="background: #141414; border-radius: 8px; padding: 16px;">
+              <p style="margin: 0 0 4px; color: #6b7280; font-size: 12px;">📊 TICKET PROMEDIO</p>
+              <p style="margin: 0; font-size: 22px; font-weight: 900; color: #ff9800;">$${Math.round(ticket_promedio).toLocaleString('es-CL')}</p>
+            </div>
+          </div>
+
+          <div style="background: #141414; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <p style="margin: 0 0 8px; color: #6b7280; font-size: 12px;">MARGEN DE UTILIDAD</p>
+            <p style="margin: 0; font-size: 24px; font-weight: 900; color: ${margen >= 30 ? '#4caf50' : margen >= 15 ? '#ff9800' : '#e53935'};">${margen}%</p>
+            ${producto_mas_vendido ? `<p style="margin: 8px 0 0; color: #6b7280; font-size: 13px;">🏆 Producto más vendido: <strong style="color:#f5f5f5">${producto_mas_vendido}</strong></p>` : ''}
+          </div>
+
+          ${ventas_clientes && ventas_clientes.length > 0 ? `
+          <p style="font-size: 12px; font-weight: 700; color: #6b7280; letter-spacing: 1px; margin-bottom: 8px;">👥 VENTAS POR CLIENTE</p>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+            <thead>
+              <tr style="border-bottom: 1px solid #2a2a2a;">
+                <th style="text-align: left; padding: 8px 0; color: #6b7280; font-size: 12px;">CLIENTE</th>
+                <th style="text-align: center; padding: 8px 0; color: #6b7280; font-size: 12px;">PEDIDOS</th>
+                <th style="text-align: right; padding: 8px 0; color: #6b7280; font-size: 12px;">TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(ventas_clientes as Array<{ nombre: string; pedidos: number; total: number }>).map((c) => `
+                <tr style="border-bottom: 1px solid #1a1a1a;">
+                  <td style="padding: 8px 0; font-size: 14px;">${c.nombre}</td>
+                  <td style="padding: 8px 0; text-align: center; color: #9ca3af; font-size: 14px;">${c.pedidos}</td>
+                  <td style="padding: 8px 0; text-align: right; font-size: 14px; color: #4caf50; font-weight: bold;">$${Math.round(c.total).toLocaleString('es-CL')}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>` : ''}
+        </div>
+      `;
     } else if (tipo === 'pedido_pagado') {
       const { cliente, vendedor, fecha, total } = pedido;
       subject = `✅ Pedido pagado — ${cliente}`;

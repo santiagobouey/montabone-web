@@ -150,6 +150,26 @@ export default function PeriodosPage() {
       }
       const ventasClientes = Object.values(ventasClienteMap).sort((a, b) => b.total - a.total);
 
+      // 6. Enviar email con informe
+      await fetch('/api/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo: 'periodo_cerrado',
+          pedido: {
+            nombre: periodo.nombre,
+            fecha_inicio: periodo.fecha_inicio,
+            fecha_cierre: periodo.fecha_cierre,
+            total_ventas: periodo.total_ventas,
+            total_utilidad: periodo.total_utilidad,
+            total_pedidos: periodo.total_pedidos,
+            producto_mas_vendido: periodo.producto_mas_vendido,
+            ticket_promedio: periodo.ticket_promedio,
+            ventas_clientes: ventasClientes,
+          },
+        }),
+      });
+
       setNombre('');
       setShowModal(false);
       await Promise.all([fetchPeriodos(), fetchStatsActuales()]);
@@ -176,6 +196,52 @@ export default function PeriodosPage() {
     setInforme({ periodo: p, ventasClientes: Object.values(ventasClienteMap).sort((a, b) => b.total - a.total) });
   }
 
+  function descargarPDF(inf: InformeDetalle) {
+    const { periodo: p, ventasClientes } = inf;
+    const margen = p.total_ventas > 0 ? Math.round((p.total_utilidad / p.total_ventas) * 100) : 0;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Informe ${p.nombre}</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 32px; color: #111; }
+      h1 { color: #e53935; margin-bottom: 4px; }
+      .sub { color: #666; font-size: 13px; margin-bottom: 24px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+      .label { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 4px; }
+      .value { font-size: 24px; font-weight: 900; }
+      .green { color: #2e7d32; } .blue { color: #1565c0; } .red { color: #c62828; } .orange { color: #e65100; }
+      table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+      th { text-align: left; padding: 8px; background: #f5f5f5; font-size: 12px; color: #666; }
+      td { padding: 10px 8px; border-bottom: 1px solid #eee; font-size: 14px; }
+      .total-row td { font-weight: bold; }
+      @media print { body { padding: 16px; } }
+    </style></head><body>
+    <h1>📊 Informe de Período</h1>
+    <p class="sub">${p.nombre} · ${p.fecha_inicio ? new Date(p.fecha_inicio + 'T12:00:00').toLocaleDateString('es-CL') : '—'} → ${new Date(p.fecha_cierre + 'T12:00:00').toLocaleDateString('es-CL')}</p>
+    <div class="grid">
+      <div class="card"><div class="label">📈 Ventas Totales</div><div class="value green">${fmt(p.total_ventas)}</div></div>
+      <div class="card"><div class="label">💰 Utilidad</div><div class="value blue">${fmt(p.total_utilidad)}</div></div>
+      <div class="card"><div class="label">📦 Pedidos</div><div class="value red">${p.total_pedidos}</div></div>
+      <div class="card"><div class="label">📊 Ticket Promedio</div><div class="value orange">${fmt(p.ticket_promedio)}</div></div>
+    </div>
+    <div class="card" style="margin-bottom:24px">
+      <div class="label">Margen de Utilidad</div>
+      <div class="value" style="color:${margen >= 30 ? '#2e7d32' : margen >= 15 ? '#e65100' : '#c62828'}">${margen}%</div>
+      ${p.producto_mas_vendido ? `<p style="margin:8px 0 0;color:#666;font-size:13px">🏆 Producto más vendido: <strong>${p.producto_mas_vendido}</strong></p>` : ''}
+    </div>
+    ${ventasClientes.length > 0 ? `
+    <h3 style="margin-bottom:8px">👥 Ventas por Cliente</h3>
+    <table>
+      <thead><tr><th>Cliente</th><th>Pedidos</th><th style="text-align:right">Total</th></tr></thead>
+      <tbody>
+        ${ventasClientes.map(c => `<tr><td>${c.nombre}</td><td>${c.pedidos}</td><td style="text-align:right;font-weight:bold;color:#2e7d32">${fmt(c.total)}</td></tr>`).join('')}
+        <tr class="total-row" style="background:#f5f5f5"><td colspan="2">TOTAL GENERAL</td><td style="text-align:right;color:#2e7d32">${fmt(p.total_ventas)}</td></tr>
+      </tbody>
+    </table>` : ''}
+    </body></html>`;
+    const win = window.open('', '_blank');
+    if (win) { win.document.write(html); win.document.close(); win.print(); }
+  }
+
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   // Vista informe
@@ -187,12 +253,17 @@ export default function PeriodosPage() {
         <div className="flex items-center gap-3 mb-6">
           <button onClick={() => setInforme(null)} className="w-9 h-9 rounded-lg flex items-center justify-center border text-lg"
             style={{ borderColor: '#2a2a2a', backgroundColor: '#141414', color: '#f5f5f5' }}>←</button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-xl font-bold" style={{ color: '#f5f5f5' }}>{p.nombre}</h1>
             <p className="text-xs" style={{ color: '#6b7280' }}>
               {p.fecha_inicio ? new Date(p.fecha_inicio + 'T12:00:00').toLocaleDateString('es-CL') : '—'} → {new Date(p.fecha_cierre + 'T12:00:00').toLocaleDateString('es-CL')}
             </p>
           </div>
+          <button onClick={() => descargarPDF(informe!)}
+            className="px-3 py-2 rounded-lg text-xs font-bold text-white"
+            style={{ backgroundColor: '#2196f3' }}>
+            ⬇️ PDF
+          </button>
         </div>
 
         {/* Stats principales */}
