@@ -20,6 +20,7 @@ interface Periodo {
 
 interface VentaCliente { nombre: string; total: number; pedidos: number; }
 interface VentaDetalleCli { nombre: string; total: number; ventas: number; }
+interface ProductoVendido { nombre: string; unidades: number; total: number; }
 
 interface InformeDetalle {
   periodo: Periodo;
@@ -27,6 +28,7 @@ interface InformeDetalle {
   ventasDetalleCli: VentaDetalleCli[];
   totalPedidos: number;
   totalDetalle: number;
+  productosVendidos: ProductoVendido[];
 }
 
 export default function PeriodosPage() {
@@ -145,9 +147,28 @@ export default function PeriodosPage() {
         }),
       });
 
+      // Productos vendidos
+      const prodMap: Record<string, ProductoVendido> = {};
+      for (const p of pedidos) for (const d of (p.detalle || [])) {
+        const n = d.producto?.nombre ?? '—';
+        if (!prodMap[n]) prodMap[n] = { nombre: n, unidades: 0, total: 0 };
+        prodMap[n].unidades += d.cantidad; prodMap[n].total += d.precio_unitario * d.cantidad;
+      }
+      for (const v of detalle) for (const i of (v.items || [])) {
+        const n = i.producto?.nombre ?? '—';
+        if (!prodMap[n]) prodMap[n] = { nombre: n, unidades: 0, total: 0 };
+        prodMap[n].unidades += i.cantidad; prodMap[n].total += i.precio_unitario * i.cantidad;
+      }
+      for (const v of eventos) {
+        const n = v.producto?.nombre ?? '—';
+        if (!prodMap[n]) prodMap[n] = { nombre: n, unidades: 0, total: 0 };
+        prodMap[n].unidades += v.cantidad; prodMap[n].total += v.precio_unitario * v.cantidad;
+      }
+      const productosVendidos = Object.values(prodMap).sort((a, b) => b.unidades - a.unidades);
+
       setNombre(''); setShowModal(false);
       await Promise.all([fetchPeriodos(), fetchStatsActuales()]);
-      setInforme({ periodo, ventasClientes, ventasDetalleCli, totalPedidos: totalPedidosVentas, totalDetalle: totalDetalleVentas });
+      setInforme({ periodo, ventasClientes, ventasDetalleCli, totalPedidos: totalPedidosVentas, totalDetalle: totalDetalleVentas, productosVendidos });
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
@@ -172,12 +193,14 @@ export default function PeriodosPage() {
   }
 
   async function verInforme(p: Periodo) {
-    const [pedidosRes, detalleRes] = await Promise.all([
-      supabase.from('pedidos').select('total, cliente:clientes(nombre)').eq('periodo_id', p.id),
-      supabase.from('ventas_detalle').select('total, nombre_comprador').eq('periodo_id', p.id),
+    const [pedidosRes, detalleRes, eventosRes] = await Promise.all([
+      supabase.from('pedidos').select('total, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))').eq('periodo_id', p.id),
+      supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))').eq('periodo_id', p.id),
+      supabase.from('ventas_evento').select('total, cantidad, precio_unitario, producto:productos(nombre)').eq('periodo_id', p.id),
     ]);
     const pedidos = (pedidosRes.data || []) as any[];
     const detalle = (detalleRes.data || []) as any[];
+    const eventos = (eventosRes.data || []) as any[];
 
     const clienteMap: Record<string, VentaCliente> = {};
     for (const ped of pedidos) {
@@ -193,12 +216,30 @@ export default function PeriodosPage() {
       detalleMap[cn].total += v.total; detalleMap[cn].ventas += 1;
     }
 
+    const prodMap: Record<string, ProductoVendido> = {};
+    for (const ped of pedidos) for (const d of (ped.detalle || [])) {
+      const n = d.producto?.nombre ?? '—';
+      if (!prodMap[n]) prodMap[n] = { nombre: n, unidades: 0, total: 0 };
+      prodMap[n].unidades += d.cantidad; prodMap[n].total += d.precio_unitario * d.cantidad;
+    }
+    for (const v of detalle) for (const i of (v.items || [])) {
+      const n = i.producto?.nombre ?? '—';
+      if (!prodMap[n]) prodMap[n] = { nombre: n, unidades: 0, total: 0 };
+      prodMap[n].unidades += i.cantidad; prodMap[n].total += i.precio_unitario * i.cantidad;
+    }
+    for (const v of eventos) {
+      const n = v.producto?.nombre ?? '—';
+      if (!prodMap[n]) prodMap[n] = { nombre: n, unidades: 0, total: 0 };
+      prodMap[n].unidades += v.cantidad; prodMap[n].total += v.precio_unitario * v.cantidad;
+    }
+
     setInforme({
       periodo: p,
       ventasClientes: Object.values(clienteMap).sort((a, b) => b.total - a.total),
       ventasDetalleCli: Object.values(detalleMap).sort((a, b) => b.total - a.total),
       totalPedidos: pedidos.reduce((s, x) => s + x.total, 0),
       totalDetalle: detalle.reduce((s, x) => s + x.total, 0),
+      productosVendidos: Object.values(prodMap).sort((a, b) => b.unidades - a.unidades),
     });
   }
 
@@ -317,6 +358,36 @@ export default function PeriodosPage() {
             ))}
           </div>
         </div>
+
+        {/* Gráfico productos vendidos */}
+        {informe.productosVendidos.length > 0 && (
+          <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+            <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>📦 Productos Vendidos</p>
+            </div>
+            <div className="p-4 space-y-3">
+              {(() => {
+                const maxUnidades = Math.max(...informe.productosVendidos.map(p => p.unidades));
+                const colores = ['#e53935', '#ff9800', '#4caf50', '#2196f3', '#9c27b0', '#00bcd4'];
+                return informe.productosVendidos.map((prod, i) => (
+                  <div key={prod.nombre}>
+                    <div className="flex justify-between items-center mb-1">
+                      <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{prod.nombre}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold" style={{ color: colores[i % colores.length] }}>{prod.unidades} uds</span>
+                        <span className="text-xs" style={{ color: '#6b7280' }}>{fmt(prod.total)}</span>
+                      </div>
+                    </div>
+                    <div className="w-full rounded-full h-3" style={{ backgroundColor: '#2a2a2a' }}>
+                      <div className="h-3 rounded-full transition-all"
+                        style={{ width: `${Math.round((prod.unidades / maxUnidades) * 100)}%`, backgroundColor: colores[i % colores.length] }} />
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        )}
 
         {/* Ventas por cliente */}
         {ventasClientes.length > 0 && (
