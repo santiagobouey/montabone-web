@@ -29,6 +29,7 @@ interface InformeDetalle {
   ventasDetalleCli: VentaDetalleCli[];
   totalPedidos: number;
   totalDetalle: number;
+  totalEventos: number;
   productosVendidos: ProductoVendido[];
   clientesActivos: ClienteEstado[];
   clientesInactivos: ClienteEstado[];
@@ -184,7 +185,8 @@ export default function PeriodosPage() {
 
       setNombre(''); setShowModal(false);
       await Promise.all([fetchPeriodos(), fetchStatsActuales()]);
-      setInforme({ periodo, ventasClientes, ventasDetalleCli, totalPedidos: totalPedidosVentas, totalDetalle: totalDetalleVentas, productosVendidos, clientesActivos: clientesActivos2, clientesInactivos: clientesInactivos2 });
+      const totalEventosVentas = eventos.reduce((s: number, x: any) => s + x.total, 0);
+      setInforme({ periodo, ventasClientes, ventasDetalleCli, totalPedidos: totalPedidosVentas, totalDetalle: totalDetalleVentas, totalEventos: totalEventosVentas, productosVendidos, clientesActivos: clientesActivos2, clientesInactivos: clientesInactivos2 });
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
@@ -273,6 +275,7 @@ export default function PeriodosPage() {
       ventasDetalleCli: Object.values(detalleMap).sort((a, b) => b.total - a.total),
       totalPedidos: pedidos.reduce((s, x) => s + x.total, 0),
       totalDetalle: detalle.reduce((s, x) => s + x.total, 0),
+      totalEventos: eventos.reduce((s, x) => s + x.total, 0),
       productosVendidos: Object.values(prodMap).sort((a, b) => b.unidades - a.unidades),
       clientesActivos: clientesActivos.sort((a, b) => a.nombre.localeCompare(b.nombre)),
       clientesInactivos: clientesInactivos.sort((a, b) => a.nombre.localeCompare(b.nombre)),
@@ -326,8 +329,84 @@ export default function PeriodosPage() {
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
+  // Donut SVG helper
+  function DonutChart({ segs }: { segs: { label: string; value: number; color: string }[] }) {
+    const total = segs.reduce((s, x) => s + x.value, 0);
+    if (total === 0) return null;
+    const cx = 70, cy = 70, R = 55, r = 30;
+    let angle = -Math.PI / 2;
+    const paths = segs.map((seg) => {
+      const sweep = (seg.value / total) * 2 * Math.PI;
+      const x1 = cx + R * Math.cos(angle), y1 = cy + R * Math.sin(angle);
+      const x2 = cx + R * Math.cos(angle + sweep), y2 = cy + R * Math.sin(angle + sweep);
+      const ix1 = cx + r * Math.cos(angle), iy1 = cy + r * Math.sin(angle);
+      const ix2 = cx + r * Math.cos(angle + sweep), iy2 = cy + r * Math.sin(angle + sweep);
+      const large = sweep > Math.PI ? 1 : 0;
+      const d = `M${x1},${y1} A${R},${R} 0 ${large} 1 ${x2},${y2} L${ix2},${iy2} A${r},${r} 0 ${large} 0 ${ix1},${iy1} Z`;
+      const pct = Math.round((seg.value / total) * 100);
+      angle += sweep;
+      return { ...seg, d, pct };
+    });
+    return (
+      <div className="flex items-center gap-4">
+        <svg viewBox="0 0 140 140" width={120} height={120} style={{ flexShrink: 0 }}>
+          {paths.map((p, i) => <path key={i} d={p.d} fill={p.color} />)}
+        </svg>
+        <div className="space-y-2 flex-1">
+          {paths.map((p) => (
+            <div key={p.label} className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-sm flex-shrink-0" style={{ backgroundColor: p.color }} />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold truncate" style={{ color: '#f5f5f5' }}>{p.label}</p>
+                <p className="text-xs" style={{ color: '#6b7280' }}>{fmt(p.value)} · {p.pct}%</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Horizontal bar SVG helper
+  function HBarChart({ items, colorFn, valueFn, labelFn, sublabelFn }: {
+    items: any[]; colorFn: (i: number) => string;
+    valueFn: (x: any) => number; labelFn: (x: any) => string; sublabelFn?: (x: any) => string;
+  }) {
+    if (items.length === 0) return null;
+    const maxVal = Math.max(...items.map(valueFn));
+    const rowH = 44, pad = 8, labelW = 120, barAreaW = 160, totalW = labelW + barAreaW + 60;
+    const h = items.length * rowH + pad * 2;
+    return (
+      <svg viewBox={`0 0 ${totalW} ${h}`} width="100%" style={{ display: 'block' }}>
+        {items.map((item, i) => {
+          const val = valueFn(item);
+          const barW = maxVal > 0 ? Math.round((val / maxVal) * barAreaW) : 0;
+          const y = pad + i * rowH;
+          const color = colorFn(i);
+          const label = labelFn(item);
+          const sub = sublabelFn ? sublabelFn(item) : '';
+          return (
+            <g key={i}>
+              <text x={labelW - 6} y={y + 16} textAnchor="end" fontSize={11} fill="#f5f5f5" fontWeight="600"
+                style={{ fontFamily: 'system-ui, sans-serif' }}>
+                {label.length > 14 ? label.slice(0, 13) + '…' : label}
+              </text>
+              {sub && <text x={labelW - 6} y={y + 30} textAnchor="end" fontSize={9} fill="#6b7280" style={{ fontFamily: 'system-ui, sans-serif' }}>{sub}</text>}
+              <rect x={labelW} y={y + 6} width={barAreaW} height={20} rx={4} fill="#2a2a2a" />
+              <rect x={labelW} y={y + 6} width={barW} height={20} rx={4} fill={color} />
+              <text x={labelW + barAreaW + 8} y={y + 20} fontSize={11} fill={color} fontWeight="800"
+                style={{ fontFamily: 'system-ui, sans-serif' }}>
+                {val.toLocaleString('es-CL')}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    );
+  }
+
   if (informe) {
-    const { periodo: p, ventasClientes, ventasDetalleCli, totalPedidos, totalDetalle } = informe;
+    const { periodo: p, ventasClientes, ventasDetalleCli, totalPedidos, totalDetalle, totalEventos } = informe;
     const margen = p.total_ventas > 0 ? Math.round((p.total_utilidad / p.total_ventas) * 100) : 0;
     return (
       <div className="p-4 md:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
@@ -371,95 +450,71 @@ export default function PeriodosPage() {
           {p.producto_mas_vendido && <p className="text-xs mt-2" style={{ color: '#6b7280' }}>🏆 Más vendido: <strong style={{ color: '#f5f5f5' }}>{p.producto_mas_vendido}</strong></p>}
         </div>
 
-        {/* Comparación pedidos vs detalle */}
+        {/* Gráfico 1: Comparación por tipo de venta (donut) */}
         <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
           <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>📊 Comparación por Tipo de Venta</p>
           </div>
-          <div className="p-4 space-y-3">
-            {[
-              { label: '📦 Pedidos', total: totalPedidos, color: '#e53935' },
-              { label: '🛒 Venta al Detalle', total: totalDetalle, color: '#9c27b0' },
-            ].map((item) => (
-              <div key={item.label}>
-                <div className="flex justify-between items-center mb-1">
-                  <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{item.label}</p>
-                  <p className="font-extrabold" style={{ color: item.color }}>{fmt(item.total)}</p>
-                </div>
-                <div className="w-full rounded-full h-2" style={{ backgroundColor: '#2a2a2a' }}>
-                  <div className="h-2 rounded-full" style={{ width: `${p.total_ventas > 0 ? Math.round((item.total / p.total_ventas) * 100) : 0}%`, backgroundColor: item.color }} />
-                </div>
-                <p className="text-xs mt-0.5 text-right" style={{ color: '#6b7280' }}>{p.total_ventas > 0 ? Math.round((item.total / p.total_ventas) * 100) : 0}%</p>
-              </div>
-            ))}
+          <div className="p-4">
+            <DonutChart segs={[
+              { label: 'Pedidos a clientes', value: totalPedidos, color: '#e53935' },
+              { label: 'Venta al detalle', value: totalDetalle, color: '#9c27b0' },
+              { label: 'Eventos', value: totalEventos, color: '#ff9800' },
+            ].filter(s => s.value > 0)} />
           </div>
         </div>
 
-        {/* Gráfico productos vendidos */}
+        {/* Gráfico 2: Productos más vendidos (barras horizontales SVG, unidades) */}
         {informe.productosVendidos.length > 0 && (
           <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
             <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>📦 Productos Vendidos</p>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>📦 Productos más vendidos (unidades)</p>
             </div>
-            <div className="p-4 space-y-3">
-              {(() => {
-                const maxUnidades = Math.max(...informe.productosVendidos.map(p => p.unidades));
-                const colores = ['#e53935', '#ff9800', '#4caf50', '#2196f3', '#9c27b0', '#00bcd4'];
-                return informe.productosVendidos.map((prod, i) => (
-                  <div key={prod.nombre}>
-                    <div className="flex justify-between items-center mb-1">
-                      <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{prod.nombre}</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold" style={{ color: colores[i % colores.length] }}>{prod.unidades} uds</span>
-                        <span className="text-xs" style={{ color: '#6b7280' }}>{fmt(prod.total)}</span>
-                      </div>
-                    </div>
-                    <div className="w-full rounded-full h-3" style={{ backgroundColor: '#2a2a2a' }}>
-                      <div className="h-3 rounded-full transition-all"
-                        style={{ width: `${Math.round((prod.unidades / maxUnidades) * 100)}%`, backgroundColor: colores[i % colores.length] }} />
-                    </div>
-                  </div>
-                ));
-              })()}
+            <div className="p-3">
+              <HBarChart
+                items={informe.productosVendidos}
+                colorFn={(i) => ['#e53935','#ff9800','#4caf50','#2196f3','#9c27b0','#00bcd4'][i % 6]}
+                valueFn={(x) => x.unidades}
+                labelFn={(x) => x.nombre}
+                sublabelFn={(x) => fmt(x.total)}
+              />
             </div>
           </div>
         )}
 
-        {/* Ventas por cliente */}
+        {/* Gráfico 3: Cuánto compró cada cliente (barras horizontales SVG, dinero) */}
         {ventasClientes.length > 0 && (
           <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
             <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>👥 Ventas por Cliente (Pedidos)</p>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>👥 Compras por cliente ($)</p>
             </div>
-            {ventasClientes.map((c, i) => (
-              <div key={c.nombre} className="flex items-center justify-between px-4 py-3"
-                style={{ borderBottom: i < ventasClientes.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{c.nombre}</p>
-                  <p className="text-xs" style={{ color: '#6b7280' }}>{c.pedidos} pedido{c.pedidos !== 1 ? 's' : ''}</p>
-                </div>
-                <p className="font-extrabold" style={{ color: '#e53935' }}>{fmt(c.total)}</p>
-              </div>
-            ))}
+            <div className="p-3">
+              <HBarChart
+                items={ventasClientes}
+                colorFn={() => '#e53935'}
+                valueFn={(x) => x.total}
+                labelFn={(x) => x.nombre}
+                sublabelFn={(x) => `${x.pedidos} pedido${x.pedidos !== 1 ? 's' : ''}`}
+              />
+            </div>
           </div>
         )}
 
         {/* Ventas al detalle por comprador */}
         {ventasDetalleCli.length > 0 && (
-          <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+          <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
             <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>🛒 Venta al Detalle por Comprador</p>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>🛒 Venta al detalle por comprador ($)</p>
             </div>
-            {ventasDetalleCli.map((c, i) => (
-              <div key={c.nombre} className="flex items-center justify-between px-4 py-3"
-                style={{ borderBottom: i < ventasDetalleCli.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{c.nombre}</p>
-                  <p className="text-xs" style={{ color: '#6b7280' }}>{c.ventas} venta{c.ventas !== 1 ? 's' : ''}</p>
-                </div>
-                <p className="font-extrabold" style={{ color: '#9c27b0' }}>{fmt(c.total)}</p>
-              </div>
-            ))}
+            <div className="p-3">
+              <HBarChart
+                items={ventasDetalleCli}
+                colorFn={() => '#9c27b0'}
+                valueFn={(x) => x.total}
+                labelFn={(x) => x.nombre}
+                sublabelFn={(x) => `${x.ventas} venta${x.ventas !== 1 ? 's' : ''}`}
+              />
+            </div>
           </div>
         )}
 
