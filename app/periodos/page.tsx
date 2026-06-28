@@ -21,6 +21,7 @@ interface Periodo {
 interface VentaCliente { nombre: string; total: number; pedidos: number; }
 interface VentaDetalleCli { nombre: string; total: number; ventas: number; }
 interface ProductoVendido { nombre: string; unidades: number; total: number; }
+interface ClienteEstado { nombre: string; tipo: string; activo: boolean; ultimaCompra: string | null; }
 
 interface InformeDetalle {
   periodo: Periodo;
@@ -29,6 +30,8 @@ interface InformeDetalle {
   totalPedidos: number;
   totalDetalle: number;
   productosVendidos: ProductoVendido[];
+  clientesActivos: ClienteEstado[];
+  clientesInactivos: ClienteEstado[];
 }
 
 export default function PeriodosPage() {
@@ -166,9 +169,22 @@ export default function PeriodosPage() {
       }
       const productosVendidos = Object.values(prodMap).sort((a, b) => b.unidades - a.unidades);
 
+      // Clientes activos/inactivos
+      const clientesRes2 = await supabase.from('clientes').select('id, nombre, tipo, activo_manual');
+      const todosClientes = (clientesRes2.data || []) as any[];
+      const clientesConCompra2 = new Set(pedidos.map((p: any) => p.cliente_id));
+      const ultimaCompraMap2: Record<string, string> = {};
+      for (const ped of pedidos) if (!ultimaCompraMap2[ped.cliente_id]) ultimaCompraMap2[ped.cliente_id] = ped.fecha;
+      const clientesActivos2: ClienteEstado[] = [];
+      const clientesInactivos2: ClienteEstado[] = [];
+      for (const c of todosClientes) {
+        const obj: ClienteEstado = { nombre: c.nombre, tipo: c.tipo, activo: clientesConCompra2.has(c.id), ultimaCompra: ultimaCompraMap2[c.id] || null };
+        if (obj.activo) clientesActivos2.push(obj); else clientesInactivos2.push(obj);
+      }
+
       setNombre(''); setShowModal(false);
       await Promise.all([fetchPeriodos(), fetchStatsActuales()]);
-      setInforme({ periodo, ventasClientes, ventasDetalleCli, totalPedidos: totalPedidosVentas, totalDetalle: totalDetalleVentas, productosVendidos });
+      setInforme({ periodo, ventasClientes, ventasDetalleCli, totalPedidos: totalPedidosVentas, totalDetalle: totalDetalleVentas, productosVendidos, clientesActivos: clientesActivos2, clientesInactivos: clientesInactivos2 });
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
@@ -193,10 +209,12 @@ export default function PeriodosPage() {
   }
 
   async function verInforme(p: Periodo) {
-    const [pedidosRes, detalleRes, eventosRes] = await Promise.all([
+    const [pedidosRes, detalleRes, eventosRes, clientesRes, todosPedidosRes] = await Promise.all([
       supabase.from('pedidos').select('total, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))').eq('periodo_id', p.id),
       supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))').eq('periodo_id', p.id),
       supabase.from('ventas_evento').select('total, cantidad, precio_unitario, producto:productos(nombre)').eq('periodo_id', p.id),
+      supabase.from('clientes').select('id, nombre, tipo, activo_manual'),
+      supabase.from('pedidos').select('cliente_id, fecha').eq('periodo_id', p.id).order('fecha', { ascending: false }),
     ]);
     const pedidos = (pedidosRes.data || []) as any[];
     const detalle = (detalleRes.data || []) as any[];
@@ -233,6 +251,22 @@ export default function PeriodosPage() {
       prodMap[n].unidades += v.cantidad; prodMap[n].total += v.precio_unitario * v.cantidad;
     }
 
+    // Clientes activos/inactivos en el período
+    const clientes = (clientesRes.data || []) as any[];
+    const todosPedidos = (todosPedidosRes.data || []) as any[];
+    const ultimaCompraMap: Record<string, string> = {};
+    for (const ped of todosPedidos) {
+      if (!ultimaCompraMap[ped.cliente_id]) ultimaCompraMap[ped.cliente_id] = ped.fecha;
+    }
+    const clientesConCompra = new Set(todosPedidos.map((x: any) => x.cliente_id));
+    const clientesActivos: ClienteEstado[] = [];
+    const clientesInactivos: ClienteEstado[] = [];
+    for (const c of clientes) {
+      const obj: ClienteEstado = { nombre: c.nombre, tipo: c.tipo, activo: clientesConCompra.has(c.id), ultimaCompra: ultimaCompraMap[c.id] || null };
+      if (obj.activo) clientesActivos.push(obj);
+      else clientesInactivos.push(obj);
+    }
+
     setInforme({
       periodo: p,
       ventasClientes: Object.values(clienteMap).sort((a, b) => b.total - a.total),
@@ -240,6 +274,8 @@ export default function PeriodosPage() {
       totalPedidos: pedidos.reduce((s, x) => s + x.total, 0),
       totalDetalle: detalle.reduce((s, x) => s + x.total, 0),
       productosVendidos: Object.values(prodMap).sort((a, b) => b.unidades - a.unidades),
+      clientesActivos: clientesActivos.sort((a, b) => a.nombre.localeCompare(b.nombre)),
+      clientesInactivos: clientesInactivos.sort((a, b) => a.nombre.localeCompare(b.nombre)),
     });
   }
 
@@ -422,6 +458,45 @@ export default function PeriodosPage() {
                   <p className="text-xs" style={{ color: '#6b7280' }}>{c.ventas} venta{c.ventas !== 1 ? 's' : ''}</p>
                 </div>
                 <p className="font-extrabold" style={{ color: '#9c27b0' }}>{fmt(c.total)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Clientes activos e inactivos */}
+        {(informe.clientesActivos.length > 0 || informe.clientesInactivos.length > 0) && (
+          <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+            <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>👥 Estado de Clientes en este Período</p>
+            </div>
+            <div className="grid grid-cols-2 border-b" style={{ borderColor: '#2a2a2a' }}>
+              <div className="flex flex-col items-center py-3 border-r" style={{ borderColor: '#2a2a2a' }}>
+                <p className="text-2xl font-extrabold" style={{ color: '#4caf50' }}>{informe.clientesActivos.length}</p>
+                <p className="text-xs font-bold" style={{ color: '#4caf50' }}>ACTIVOS</p>
+              </div>
+              <div className="flex flex-col items-center py-3">
+                <p className="text-2xl font-extrabold" style={{ color: '#e53935' }}>{informe.clientesInactivos.length}</p>
+                <p className="text-xs font-bold" style={{ color: '#e53935' }}>INACTIVOS</p>
+              </div>
+            </div>
+            {informe.clientesActivos.map((c, i) => (
+              <div key={c.nombre} className="flex items-center justify-between px-4 py-2"
+                style={{ borderBottom: '1px solid #2a2a2a' }}>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{c.nombre}</p>
+                  <p className="text-xs capitalize" style={{ color: '#6b7280' }}>{c.tipo}</p>
+                </div>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#4caf5020', color: '#4caf50' }}>✓ Compró</span>
+              </div>
+            ))}
+            {informe.clientesInactivos.map((c) => (
+              <div key={c.nombre} className="flex items-center justify-between px-4 py-2"
+                style={{ borderBottom: '1px solid #2a2a2a' }}>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: '#9ca3af' }}>{c.nombre}</p>
+                  <p className="text-xs capitalize" style={{ color: '#6b7280' }}>{c.tipo}</p>
+                </div>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#e5393520', color: '#e53935' }}>Sin compra</span>
               </div>
             ))}
           </div>
