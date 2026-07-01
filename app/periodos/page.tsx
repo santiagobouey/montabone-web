@@ -46,6 +46,8 @@ export default function PeriodosPage() {
   const [nombre, setNombre] = useState('');
   const [informe, setInforme] = useState<InformeDetalle | null>(null);
   const [statsActuales, setStatsActuales] = useState<{ ventas: number; pedidos: number } | null>(null);
+  const [productos, setProductos] = useState<{ id: string; nombre: string; costo: number }[]>([]);
+  const [costos, setCostos] = useState<Record<string, string>>({});
 
   const fetchPeriodos = useCallback(async () => {
     const { data } = await supabase.from('periodos').select('*').order('created_at', { ascending: false });
@@ -68,6 +70,16 @@ export default function PeriodosPage() {
   useEffect(() => {
     Promise.all([fetchPeriodos(), fetchStatsActuales()]).finally(() => setLoading(false));
   }, [fetchPeriodos, fetchStatsActuales]);
+
+  async function abrirModalCierre() {
+    const { data } = await supabase.from('productos').select('id, nombre, costo').order('nombre');
+    const prods = data || [];
+    setProductos(prods);
+    const map: Record<string, string> = {};
+    for (const p of prods) map[p.id] = p.costo ? String(p.costo) : '';
+    setCostos(map);
+    setShowModal(true);
+  }
 
   async function cerrarPeriodo() {
     if (!nombre) return;
@@ -185,7 +197,13 @@ export default function PeriodosPage() {
       }
 
       if (resetearStock) {
-        await supabase.from('productos').update({ stock: 0, fecha_vencimiento: null }).neq('id', '00000000-0000-0000-0000-000000000000');
+        await Promise.all(productos.map((prod) =>
+          supabase.from('productos').update({
+            stock: 0,
+            fecha_vencimiento: null,
+            costo: costos[prod.id] ? parseInt(costos[prod.id]) : prod.costo,
+          }).eq('id', prod.id)
+        ));
       }
 
       setNombre(''); setResetearStock(false); setShowModal(false);
@@ -663,7 +681,7 @@ export default function PeriodosPage() {
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Períodos</h1>
           <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Historial de lotes y cierres de período</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="px-4 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#e53935' }}>
+        <button onClick={abrirModalCierre} className="px-4 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#e53935' }}>
           🔒 Cerrar Período
         </button>
       </div>
@@ -720,7 +738,7 @@ export default function PeriodosPage() {
               ⚠️ Se archivarán {statsActuales?.pedidos ?? 0} pedido{(statsActuales?.pedidos ?? 0) !== 1 ? 's' : ''} con {fmt(statsActuales?.ventas ?? 0)} en ventas.
             </p>
             <button onClick={() => setResetearStock(!resetearStock)}
-              className="w-full flex items-center gap-3 p-3 rounded-lg border mb-4 text-left"
+              className="w-full flex items-center gap-3 p-3 rounded-lg border mb-3 text-left"
               style={{ borderColor: resetearStock ? '#e53935' : '#2a2a2a', backgroundColor: resetearStock ? '#e5393510' : 'transparent' }}>
               <div className="w-5 h-5 rounded flex items-center justify-center border-2 flex-shrink-0"
                 style={{ borderColor: resetearStock ? '#e53935' : '#4b5563', backgroundColor: resetearStock ? '#e53935' : 'transparent' }}>
@@ -728,9 +746,35 @@ export default function PeriodosPage() {
               </div>
               <div>
                 <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>Dejar inventario en 0</p>
-                <p className="text-xs" style={{ color: '#6b7280' }}>Resetea el stock de todos los productos al cerrar</p>
+                <p className="text-xs" style={{ color: '#6b7280' }}>Resetea stock y fecha de vencimiento al cerrar</p>
               </div>
             </button>
+
+            {resetearStock && productos.length > 0 && (
+              <div className="rounded-lg border mb-4 overflow-hidden" style={{ borderColor: '#2a2a2a' }}>
+                <div className="px-3 py-2 border-b" style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>
+                  <p className="text-xs font-bold uppercase" style={{ color: '#6b7280' }}>💰 Actualizar costo por producto</p>
+                </div>
+                <div className="max-h-48 overflow-y-auto">
+                  {productos.map((prod) => (
+                    <div key={prod.id} className="flex items-center gap-2 px-3 py-2 border-b last:border-0" style={{ borderColor: '#2a2a2a' }}>
+                      <p className="flex-1 text-sm truncate" style={{ color: '#f5f5f5' }}>{prod.nombre}</p>
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs" style={{ color: '#6b7280' }}>$</span>
+                        <input
+                          type="number"
+                          value={costos[prod.id] ?? ''}
+                          onChange={(e) => setCostos(prev => ({ ...prev, [prod.id]: e.target.value }))}
+                          placeholder={prod.costo ? String(prod.costo) : '0'}
+                          className="w-24 rounded px-2 py-1 text-sm text-right border"
+                          style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex gap-3">
               <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-lg font-bold text-sm border" style={{ borderColor: '#2a2a2a', color: '#6b7280' }}>Cancelar</button>
               <button onClick={cerrarPeriodo} disabled={cerrando || !nombre} className="flex-1 py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40" style={{ backgroundColor: '#e53935' }}>
