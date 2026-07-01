@@ -39,6 +39,7 @@ export default function PeriodosPage() {
   const [periodos, setPeriodos] = useState<Periodo[]>([]);
   const [loading, setLoading] = useState(true);
   const [cerrando, setCerrando] = useState(false);
+  const [resetearStock, setResetearStock] = useState(false);
   const [reabriendo, setReabriendo] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showReabrirModal, setShowReabrirModal] = useState(false);
@@ -183,7 +184,11 @@ export default function PeriodosPage() {
         if (obj.activo) clientesActivos2.push(obj); else clientesInactivos2.push(obj);
       }
 
-      setNombre(''); setShowModal(false);
+      if (resetearStock) {
+        await supabase.from('productos').update({ stock: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+      }
+
+      setNombre(''); setResetearStock(false); setShowModal(false);
       await Promise.all([fetchPeriodos(), fetchStatsActuales()]);
       const totalEventosVentas = eventos.reduce((s: number, x: any) => s + x.total, 0);
       setInforme({ periodo, ventasClientes, ventasDetalleCli, totalPedidos: totalPedidosVentas, totalDetalle: totalDetalleVentas, totalEventos: totalEventosVentas, productosVendidos, clientesActivos: clientesActivos2, clientesInactivos: clientesInactivos2 });
@@ -714,6 +719,18 @@ export default function PeriodosPage() {
             <p className="text-xs p-3 rounded-lg mb-4" style={{ backgroundColor: '#ff980015', color: '#ff9800' }}>
               ⚠️ Se archivarán {statsActuales?.pedidos ?? 0} pedido{(statsActuales?.pedidos ?? 0) !== 1 ? 's' : ''} con {fmt(statsActuales?.ventas ?? 0)} en ventas.
             </p>
+            <button onClick={() => setResetearStock(!resetearStock)}
+              className="w-full flex items-center gap-3 p-3 rounded-lg border mb-4 text-left"
+              style={{ borderColor: resetearStock ? '#e53935' : '#2a2a2a', backgroundColor: resetearStock ? '#e5393510' : 'transparent' }}>
+              <div className="w-5 h-5 rounded flex items-center justify-center border-2 flex-shrink-0"
+                style={{ borderColor: resetearStock ? '#e53935' : '#4b5563', backgroundColor: resetearStock ? '#e53935' : 'transparent' }}>
+                {resetearStock && <span className="text-white text-xs font-bold">✓</span>}
+              </div>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>Dejar inventario en 0</p>
+                <p className="text-xs" style={{ color: '#6b7280' }}>Resetea el stock de todos los productos al cerrar</p>
+              </div>
+            </button>
             <div className="flex gap-3">
               <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-lg font-bold text-sm border" style={{ borderColor: '#2a2a2a', color: '#6b7280' }}>Cancelar</button>
               <button onClick={cerrarPeriodo} disabled={cerrando || !nombre} className="flex-1 py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40" style={{ backgroundColor: '#e53935' }}>
