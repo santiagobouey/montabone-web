@@ -45,9 +45,7 @@ export default function PeriodosPage() {
   const [showReabrirModal, setShowReabrirModal] = useState(false);
   const [nombre, setNombre] = useState('');
   const [informe, setInforme] = useState<InformeDetalle | null>(null);
-  const [statsActuales, setStatsActuales] = useState<{ ventas: number; pedidos: number } | null>(null);
-  const [productos, setProductos] = useState<{ id: string; nombre: string; costo: number }[]>([]);
-  const [costos, setCostos] = useState<Record<string, string>>({});
+  const [statsActuales, setStatsActuales] = useState<{ ventas: number; pedidos: number; costos: number; utilidad: number } | null>(null);
 
   const fetchPeriodos = useCallback(async () => {
     const { data } = await supabase.from('periodos').select('*').order('created_at', { ascending: false });
@@ -55,54 +53,48 @@ export default function PeriodosPage() {
   }, []);
 
   const fetchStatsActuales = useCallback(async () => {
-    const [pedidosRes, detalleRes] = await Promise.all([
+    const [pedidosRes, detalleRes, eventosRes, facturasRes] = await Promise.all([
       supabase.from('pedidos').select('total').is('periodo_id', null),
       supabase.from('ventas_detalle').select('total').is('periodo_id', null),
+      supabase.from('ventas_evento').select('total').is('periodo_id', null),
+      supabase.from('costos_factura').select('monto').is('periodo_id', null),
     ]);
     const pedidos = pedidosRes.data || [];
     const detalle = detalleRes.data || [];
-    setStatsActuales({
-      ventas: [...pedidos, ...detalle].reduce((s, x) => s + x.total, 0),
-      pedidos: pedidos.length,
-    });
+    const eventos = eventosRes.data || [];
+    const facturas = facturasRes.data || [];
+    const ventas = [...pedidos, ...detalle, ...eventos].reduce((s, x) => s + x.total, 0);
+    const costos = facturas.reduce((s, f) => s + f.monto, 0);
+    setStatsActuales({ ventas, pedidos: pedidos.length, costos, utilidad: ventas - costos });
   }, []);
 
   useEffect(() => {
     Promise.all([fetchPeriodos(), fetchStatsActuales()]).finally(() => setLoading(false));
   }, [fetchPeriodos, fetchStatsActuales]);
 
-  async function abrirModalCierre() {
-    const { data } = await supabase.from('productos').select('id, nombre, costo').order('nombre');
-    const prods = data || [];
-    setProductos(prods);
-    const map: Record<string, string> = {};
-    for (const p of prods) map[p.id] = p.costo ? String(p.costo) : '';
-    setCostos(map);
-    setShowModal(true);
-  }
-
   async function cerrarPeriodo() {
     if (!nombre) return;
     setCerrando(true);
     try {
-      const [pedidosRes, detalleRes, eventosRes] = await Promise.all([
+      const [pedidosRes, detalleRes, eventosRes, facturasRes] = await Promise.all([
         supabase.from('pedidos').select('id, total, fecha, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').is('periodo_id', null),
         supabase.from('ventas_detalle').select('id, total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').is('periodo_id', null),
         supabase.from('ventas_evento').select('id, total, cantidad, precio_unitario, producto:productos(nombre, costo)').is('periodo_id', null),
+        supabase.from('costos_factura').select('id, monto').is('periodo_id', null),
       ]);
 
       const pedidos = (pedidosRes.data || []) as any[];
       const detalle = (detalleRes.data || []) as any[];
       const eventos = (eventosRes.data || []) as any[];
+      const facturas = (facturasRes.data || []) as any[];
 
       const totalVentas = [...pedidos, ...detalle, ...eventos].reduce((s, x) => s + x.total, 0);
       const totalPedidosVentas = pedidos.reduce((s: number, x: any) => s + x.total, 0);
       const totalDetalleVentas = detalle.reduce((s: number, x: any) => s + x.total, 0);
 
-      let totalUtilidad = 0;
-      for (const p of pedidos) for (const d of (p.detalle || [])) totalUtilidad += (d.precio_unitario - (d.producto?.costo ?? 0)) * d.cantidad;
-      for (const v of detalle) for (const i of (v.items || [])) totalUtilidad += (i.precio_unitario - (i.producto?.costo ?? 0)) * i.cantidad;
-      for (const v of eventos) totalUtilidad += (v.precio_unitario - (v.producto?.costo ?? 0)) * v.cantidad;
+      // Utilidad = ventas - facturas (costos) del período
+      const totalCosto = facturas.reduce((s: number, f: any) => s + f.monto, 0);
+      const totalUtilidad = totalVentas - totalCosto;
 
       const totalTransacciones = pedidos.length + detalle.length + eventos.length;
       const ticketPromedio = totalTransacciones > 0 ? totalVentas / totalTransacciones : 0;
@@ -130,6 +122,7 @@ export default function PeriodosPage() {
         pedidos.length > 0 && supabase.from('pedidos').update({ periodo_id: periodoId }).in('id', pedidos.map((p: any) => p.id)),
         detalle.length > 0 && supabase.from('ventas_detalle').update({ periodo_id: periodoId }).in('id', detalle.map((v: any) => v.id)),
         eventos.length > 0 && supabase.from('ventas_evento').update({ periodo_id: periodoId }).in('id', eventos.map((v: any) => v.id)),
+        facturas.length > 0 && supabase.from('costos_factura').update({ periodo_id: periodoId }).in('id', facturas.map((f: any) => f.id)),
       ]);
 
       // Ventas por cliente (pedidos)
@@ -197,13 +190,7 @@ export default function PeriodosPage() {
       }
 
       if (resetearStock) {
-        await Promise.all(productos.map((prod) =>
-          supabase.from('productos').update({
-            stock: 0,
-            fecha_vencimiento: null,
-            costo: costos[prod.id] ? parseInt(costos[prod.id]) : prod.costo,
-          }).eq('id', prod.id)
-        ));
+        await supabase.from('productos').update({ stock: 0, fecha_vencimiento: null }).neq('id', '00000000-0000-0000-0000-000000000000');
       }
 
       setNombre(''); setResetearStock(false); setShowModal(false);
@@ -223,6 +210,7 @@ export default function PeriodosPage() {
         supabase.from('pedidos').update({ periodo_id: null }).eq('periodo_id', p.id),
         supabase.from('ventas_detalle').update({ periodo_id: null }).eq('periodo_id', p.id),
         supabase.from('ventas_evento').update({ periodo_id: null }).eq('periodo_id', p.id),
+        supabase.from('costos_factura').update({ periodo_id: null }).eq('periodo_id', p.id),
       ]);
       await supabase.from('periodos').delete().eq('id', p.id);
       setInforme(null); setShowReabrirModal(false);
@@ -389,7 +377,7 @@ export default function PeriodosPage() {
 
     <div class="grid">
       <div class="card"><div class="label">Ventas Totales</div><div class="value" style="color:#2e7d32">${fmt(p.total_ventas)}</div></div>
-      <div class="card"><div class="label">Costo Productos</div><div class="value" style="color:#c62828">${fmt(totalCostoPDF)}</div></div>
+      <div class="card"><div class="label">Costos (facturas)</div><div class="value" style="color:#c62828">${fmt(totalCostoPDF)}</div></div>
       <div class="card"><div class="label">Utilidad Neta</div><div class="value" style="color:#1565c0">${fmt(p.total_utilidad)}</div></div>
       <div class="card"><div class="label">Margen</div><div class="value" style="color:${margen>=30?'#2e7d32':margen>=15?'#e65100':'#c62828'}">${margen}%</div></div>
       <div class="card"><div class="label">Pedidos</div><div class="value" style="color:#6a1b9a">${p.total_pedidos}</div></div>
@@ -529,7 +517,7 @@ export default function PeriodosPage() {
         <div className="grid grid-cols-2 gap-3 mb-4">
           {[
             { label: '📈 Ventas totales', value: fmt(p.total_ventas), color: '#4caf50' },
-            { label: '🧾 Costo productos', value: fmt(totalCosto), color: '#e53935' },
+            { label: '🧾 Costos (facturas)', value: fmt(totalCosto), color: '#e53935' },
             { label: '💰 Utilidad neta', value: fmt(p.total_utilidad), color: '#2196f3' },
             { label: '📊 Ticket promedio', value: fmt(p.ticket_promedio), color: '#ff9800' },
             { label: '📦 Pedidos', value: String(p.total_pedidos), color: '#9c27b0' },
@@ -681,7 +669,7 @@ export default function PeriodosPage() {
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Períodos</h1>
           <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Historial de lotes y cierres de período</p>
         </div>
-        <button onClick={abrirModalCierre} className="px-4 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#e53935' }}>
+        <button onClick={() => setShowModal(true)} className="px-4 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#e53935' }}>
           🔒 Cerrar Período
         </button>
       </div>
@@ -690,12 +678,20 @@ export default function PeriodosPage() {
         <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6b7280' }}>📋 Período Actual (sin cerrar)</p>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <p className="text-xs" style={{ color: '#6b7280' }}>Ventas registradas</p>
+            <p className="text-xs" style={{ color: '#6b7280' }}>📈 Ventas</p>
             <p className="text-2xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(statsActuales?.ventas ?? 0)}</p>
           </div>
           <div>
-            <p className="text-xs" style={{ color: '#6b7280' }}>Pedidos</p>
-            <p className="text-2xl font-extrabold" style={{ color: '#e53935' }}>{statsActuales?.pedidos ?? 0}</p>
+            <p className="text-xs" style={{ color: '#6b7280' }}>🧾 Costos (facturas)</p>
+            <p className="text-2xl font-extrabold" style={{ color: '#e53935' }}>{fmt(statsActuales?.costos ?? 0)}</p>
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: '#6b7280' }}>💰 Utilidad</p>
+            <p className="text-2xl font-extrabold" style={{ color: (statsActuales?.utilidad ?? 0) < 0 ? '#e53935' : '#2196f3' }}>{fmt(statsActuales?.utilidad ?? 0)}</p>
+          </div>
+          <div>
+            <p className="text-xs" style={{ color: '#6b7280' }}>📦 Pedidos</p>
+            <p className="text-2xl font-extrabold" style={{ color: '#9c27b0' }}>{statsActuales?.pedidos ?? 0}</p>
           </div>
         </div>
       </div>
@@ -750,31 +746,6 @@ export default function PeriodosPage() {
               </div>
             </button>
 
-            {resetearStock && productos.length > 0 && (
-              <div className="rounded-lg border mb-4 overflow-hidden" style={{ borderColor: '#2a2a2a' }}>
-                <div className="px-3 py-2 border-b" style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>
-                  <p className="text-xs font-bold uppercase" style={{ color: '#6b7280' }}>💰 Actualizar costo por producto</p>
-                </div>
-                <div className="max-h-48 overflow-y-auto">
-                  {productos.map((prod) => (
-                    <div key={prod.id} className="flex items-center gap-2 px-3 py-2 border-b last:border-0" style={{ borderColor: '#2a2a2a' }}>
-                      <p className="flex-1 text-sm truncate" style={{ color: '#f5f5f5' }}>{prod.nombre}</p>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs" style={{ color: '#6b7280' }}>$</span>
-                        <input
-                          type="number"
-                          value={costos[prod.id] ?? ''}
-                          onChange={(e) => setCostos(prev => ({ ...prev, [prod.id]: e.target.value }))}
-                          placeholder={prod.costo ? String(prod.costo) : '0'}
-                          className="w-24 rounded px-2 py-1 text-sm text-right border"
-                          style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
             <div className="flex gap-3">
               <button onClick={() => setShowModal(false)} className="flex-1 py-3 rounded-lg font-bold text-sm border" style={{ borderColor: '#2a2a2a', color: '#6b7280' }}>Cancelar</button>
               <button onClick={cerrarPeriodo} disabled={cerrando || !nombre} className="flex-1 py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40" style={{ backgroundColor: '#e53935' }}>

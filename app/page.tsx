@@ -65,6 +65,7 @@ export default function DashboardPage() {
           cobroRes,
           prospectoRes,
           pedidosPorClienteRes,
+          facturasMesRes,
         ] = await Promise.all([
           supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
@@ -76,6 +77,7 @@ export default function DashboardPage() {
           supabase.from('pedidos').select('total').in('estado', ['pendiente', 'preparado', 'entregado']),
           supabase.from('prospectos').select('id, nombre_local, nombre_contacto, proxima_visita').in('estado', ['potencial', 'contactado', 'pendiente']),
           supabase.from('pedidos').select('cliente_id, fecha').order('fecha', { ascending: false }),
+          supabase.from('costos_factura').select('monto').gte('created_at', inicioMes).lte('created_at', finMes + 'T23:59:59'),
         ]);
 
         const pedidosMes = (pedidosMesRes.data || []) as any[];
@@ -92,24 +94,9 @@ export default function DashboardPage() {
         const ventasEventos = eventosMes.reduce((s: number, v: any) => s + v.total, 0);
         const ventasMes = ventasPedidos + ventasDetalle + ventasEventos;
 
-        // Utilidad del mes
-        let utilidadMes = 0;
-        for (const p of pedidosMes) {
-          for (const d of (p.detalle || [])) {
-            const costo = d.producto?.costo ?? 0;
-            utilidadMes += (d.precio_unitario - costo) * d.cantidad;
-          }
-        }
-        for (const v of detallesMes) {
-          for (const i of (v.items || [])) {
-            const costo = i.producto?.costo ?? 0;
-            utilidadMes += (i.precio_unitario - costo) * i.cantidad;
-          }
-        }
-        for (const v of eventosMes) {
-          const costo = v.producto?.costo ?? 0;
-          utilidadMes += (v.precio_unitario - costo) * v.cantidad;
-        }
+        // Utilidad del mes = ventas del mes - facturas (costos) del mes
+        const facturasMes = ((facturasMesRes.data || []) as any[]).reduce((s, f) => s + f.monto, 0);
+        const utilidadMes = ventasMes - facturasMes;
 
         // Pedidos del mes
         const totalTransacciones = pedidosMes.length + detallesMes.length + eventosMes.length;
