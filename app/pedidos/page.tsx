@@ -588,7 +588,14 @@ export default function PedidosPage() {
                 </div>
               ))}
               <div className="flex justify-between items-center mt-3">
-                <p className="font-extrabold text-lg" style={{ color: '#f5f5f5' }}>{fmt(p.total)}</p>
+                <div>
+                  <p className="font-extrabold text-lg" style={{ color: '#f5f5f5' }}>{fmt(p.total)}</p>
+                  {(() => {
+                    const utilidad = (p.detalle || []).reduce((s, d) => s + (d.precio_unitario - (d.producto?.costo ?? 0)) * d.cantidad, 0);
+                    if (utilidad === 0) return null;
+                    return <p className="text-xs font-semibold" style={{ color: utilidad > 0 ? '#4caf50' : '#e53935' }}>Utilidad: {fmt(utilidad)}</p>;
+                  })()}
+                </div>
                 <div className="flex gap-2">
                   {ESTADOS.filter((e) => e !== p.estado).map((e) => (
                     <button key={e} onClick={() => cambiarEstado(p.id, e)}
