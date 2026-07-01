@@ -51,6 +51,10 @@ export default function CostosPage() {
     const c = costos[p.id] ? parseInt(costos[p.id]) : 0;
     return s + c * p.stock;
   }, 0);
+  const utilidadPotencial = productos.reduce((s, p) => {
+    const c = costos[p.id] ? parseInt(costos[p.id]) : 0;
+    return s + (c > 0 ? (p.precio - c) * p.stock : 0);
+  }, 0);
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-3xl mx-auto">
@@ -64,40 +68,54 @@ export default function CostosPage() {
         </button>
       </div>
 
-      <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
-        <p className="text-xs" style={{ color: '#6b7280' }}>Valor del inventario a costo (stock actual)</p>
-        <p className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(costoTotalInventario)}</p>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+          <p className="text-xs" style={{ color: '#6b7280' }}>Inventario a costo (stock actual)</p>
+          <p className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(costoTotalInventario)}</p>
+        </div>
+        <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+          <p className="text-xs" style={{ color: '#6b7280' }}>Utilidad potencial (si vendes todo)</p>
+          <p className="text-2xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(utilidadPotencial)}</p>
+        </div>
       </div>
 
       <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
         <div className="grid grid-cols-12 px-4 py-2 border-b text-xs font-bold uppercase" style={{ borderColor: '#2a2a2a', color: '#6b7280' }}>
-          <div className="col-span-6">Producto</div>
+          <div className="col-span-5">Producto</div>
           <div className="col-span-3 text-right">Precio venta</div>
-          <div className="col-span-3 text-right">Costo</div>
+          <div className="col-span-2 text-right">Costo</div>
+          <div className="col-span-2 text-right">Utilidad</div>
         </div>
         {productos.map((prod) => {
           const costoNum = costos[prod.id] ? parseInt(costos[prod.id]) : 0;
+          const utilidad = costoNum > 0 ? prod.precio - costoNum : null;
           const margen = prod.precio > 0 && costoNum > 0 ? Math.round(((prod.precio - costoNum) / prod.precio) * 100) : null;
+          const utilColor = margen === null ? '#6b7280' : margen >= 30 ? '#4caf50' : margen >= 15 ? '#ff9800' : '#e53935';
           return (
             <div key={prod.id} className="grid grid-cols-12 items-center px-4 py-3 border-b last:border-0" style={{ borderColor: '#2a2a2a' }}>
-              <div className="col-span-6 min-w-0">
+              <div className="col-span-5 min-w-0">
                 <p className="text-sm font-semibold truncate" style={{ color: '#f5f5f5' }}>{prod.nombre}</p>
-                <p className="text-xs" style={{ color: '#6b7280' }}>
-                  {prod.formato}
-                  {margen !== null && <> · <span style={{ color: margen >= 30 ? '#4caf50' : margen >= 15 ? '#ff9800' : '#e53935' }}>{margen}% margen</span></>}
-                </p>
+                <p className="text-xs" style={{ color: '#6b7280' }}>{prod.formato}</p>
               </div>
               <div className="col-span-3 text-right text-sm" style={{ color: '#9ca3af' }}>{fmt(prod.precio)}</div>
-              <div className="col-span-3 flex items-center justify-end gap-1">
+              <div className="col-span-2 flex items-center justify-end gap-1">
                 <span className="text-xs" style={{ color: '#6b7280' }}>$</span>
                 <input
                   type="number"
                   value={costos[prod.id] ?? ''}
                   onChange={(e) => setCostos(prev => ({ ...prev, [prod.id]: e.target.value }))}
                   placeholder="0"
-                  className="w-24 rounded px-2 py-1 text-sm text-right border"
+                  className="w-20 rounded px-2 py-1 text-sm text-right border"
                   style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }}
                 />
+              </div>
+              <div className="col-span-2 text-right">
+                {utilidad !== null ? (
+                  <>
+                    <p className="text-sm font-bold" style={{ color: utilColor }}>{fmt(utilidad)}</p>
+                    <p className="text-xs" style={{ color: utilColor }}>{margen}%</p>
+                  </>
+                ) : <p className="text-sm" style={{ color: '#4b5563' }}>—</p>}
               </div>
             </div>
           );
