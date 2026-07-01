@@ -283,42 +283,120 @@ export default function PeriodosPage() {
   }
 
   function descargarPDF(inf: InformeDetalle) {
-    const { periodo: p, ventasClientes, ventasDetalleCli, totalPedidos, totalDetalle } = inf;
+    const { periodo: p, ventasClientes, ventasDetalleCli, totalPedidos, totalDetalle, totalEventos, productosVendidos } = inf;
     const margen = p.total_ventas > 0 ? Math.round((p.total_utilidad / p.total_ventas) * 100) : 0;
+    const totalCostoPDF = p.total_ventas - p.total_utilidad;
+
+    // Donut SVG
+    function buildDonut(segs: { label: string; value: number; color: string }[]) {
+      const total = segs.reduce((s, x) => s + x.value, 0);
+      if (total === 0) return '';
+      const cx = 80, cy = 80, R = 65, r = 38;
+      let angle = -Math.PI / 2;
+      let paths = '';
+      let legend = '';
+      for (const seg of segs) {
+        if (seg.value === 0) continue;
+        const sweep = (seg.value / total) * 2 * Math.PI;
+        const x1 = cx + R * Math.cos(angle), y1 = cy + R * Math.sin(angle);
+        const x2 = cx + R * Math.cos(angle + sweep), y2 = cy + R * Math.sin(angle + sweep);
+        const ix1 = cx + r * Math.cos(angle), iy1 = cy + r * Math.sin(angle);
+        const ix2 = cx + r * Math.cos(angle + sweep), iy2 = cy + r * Math.sin(angle + sweep);
+        const large = sweep > Math.PI ? 1 : 0;
+        paths += `<path d="M${x1.toFixed(1)},${y1.toFixed(1)} A${R},${R} 0 ${large} 1 ${x2.toFixed(1)},${y2.toFixed(1)} L${ix2.toFixed(1)},${iy2.toFixed(1)} A${r},${r} 0 ${large} 0 ${ix1.toFixed(1)},${iy1.toFixed(1)} Z" fill="${seg.color}"/>`;
+        legend += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="width:14px;height:14px;border-radius:3px;background:${seg.color};flex-shrink:0"></div><div><div style="font-size:13px;font-weight:600">${seg.label}</div><div style="font-size:12px;color:#666">${fmt(seg.value)} · ${Math.round((seg.value / total) * 100)}%</div></div></div>`;
+        angle += sweep;
+      }
+      return `<div style="display:flex;align-items:center;gap:24px"><svg viewBox="0 0 160 160" width="160" height="160"><g>${paths}</g></svg><div>${legend}</div></div>`;
+    }
+
+    // Horizontal bar SVG
+    function buildBarChart(items: { label: string; sublabel: string; value: number; color: string }[]) {
+      if (items.length === 0) return '';
+      const maxVal = Math.max(...items.map(x => x.value));
+      const rowH = 46, labelW = 140, barW = 220, valW = 80, totalW = labelW + barW + valW + 10;
+      const h = items.length * rowH + 16;
+      let rows = '';
+      items.forEach((item, i) => {
+        const bw = maxVal > 0 ? Math.round((item.value / maxVal) * barW) : 0;
+        const y = 8 + i * rowH;
+        rows += `<text x="${labelW - 6}" y="${y + 16}" text-anchor="end" font-size="12" fill="#111" font-weight="600" font-family="Arial,sans-serif">${item.label.length > 16 ? item.label.slice(0, 15) + '…' : item.label}</text>`;
+        rows += `<text x="${labelW - 6}" y="${y + 30}" text-anchor="end" font-size="10" fill="#888" font-family="Arial,sans-serif">${item.sublabel}</text>`;
+        rows += `<rect x="${labelW}" y="${y + 4}" width="${barW}" height="22" rx="4" fill="#f0f0f0"/>`;
+        rows += `<rect x="${labelW}" y="${y + 4}" width="${bw}" height="22" rx="4" fill="${item.color}"/>`;
+        rows += `<text x="${labelW + barW + 8}" y="${y + 19}" font-size="11" fill="${item.color}" font-weight="800" font-family="Arial,sans-serif">${item.value.toLocaleString('es-CL')}</text>`;
+      });
+      return `<svg viewBox="0 0 ${totalW} ${h}" width="100%" style="display:block">${rows}</svg>`;
+    }
+
+    const donutHtml = buildDonut([
+      { label: 'Pedidos a clientes', value: totalPedidos, color: '#e53935' },
+      { label: 'Venta al detalle', value: totalDetalle, color: '#9c27b0' },
+      { label: 'Eventos', value: totalEventos, color: '#ff9800' },
+    ]);
+
+    const colores = ['#e53935','#ff9800','#4caf50','#2196f3','#9c27b0','#00bcd4'];
+    const productosBarHtml = buildBarChart(
+      productosVendidos.map((x, i) => ({ label: x.nombre, sublabel: fmt(x.total), value: x.unidades, color: colores[i % colores.length] }))
+    );
+
+    const clientesBarHtml = buildBarChart(
+      ventasClientes.map(x => ({ label: x.nombre, sublabel: `${x.pedidos} pedido${x.pedidos !== 1 ? 's' : ''}`, value: x.total, color: '#e53935' }))
+    );
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Informe ${p.nombre}</title>
     <style>
-      body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{color:#e53935;margin-bottom:4px}
-      .sub{color:#666;font-size:13px;margin-bottom:24px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
-      .card{border:1px solid #ddd;border-radius:8px;padding:16px}.label{font-size:11px;color:#666;text-transform:uppercase;margin-bottom:4px}
-      .value{font-size:24px;font-weight:900}.green{color:#2e7d32}.blue{color:#1565c0}.red{color:#c62828}.orange{color:#e65100}.purple{color:#6a1b9a}
-      table{width:100%;border-collapse:collapse;margin-top:8px}th{text-align:left;padding:8px;background:#f5f5f5;font-size:12px;color:#666}
-      td{padding:10px 8px;border-bottom:1px solid #eee;font-size:14px}h3{margin:24px 0 8px}
-      @media print{body{padding:16px}}
+      body{font-family:Arial,sans-serif;padding:32px;color:#111;max-width:800px;margin:0 auto}
+      h1{color:#e53935;margin-bottom:4px}
+      .sub{color:#666;font-size:13px;margin-bottom:24px}
+      .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+      .card{border:1px solid #ddd;border-radius:8px;padding:16px}
+      .label{font-size:11px;color:#666;text-transform:uppercase;margin-bottom:4px}
+      .value{font-size:24px;font-weight:900}
+      .chart-box{border:1px solid #ddd;border-radius:8px;padding:20px;margin-bottom:24px}
+      .chart-title{font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;margin:0 0 16px}
+      table{width:100%;border-collapse:collapse;margin-top:8px}
+      th{text-align:left;padding:8px;background:#f5f5f5;font-size:12px;color:#666}
+      td{padding:10px 8px;border-bottom:1px solid #eee;font-size:14px}
+      h3{margin:24px 0 8px}
+      @media print{body{padding:16px}.chart-box{break-inside:avoid}}
     </style></head><body>
-    <h1>📊 Informe de Período</h1>
+    <h1>Informe de Período</h1>
     <p class="sub">${p.nombre} · ${p.fecha_inicio ? new Date(p.fecha_inicio + 'T12:00:00').toLocaleDateString('es-CL') : '—'} → ${new Date(p.fecha_cierre + 'T12:00:00').toLocaleDateString('es-CL')}</p>
+
     <div class="grid">
-      <div class="card"><div class="label">📈 Ventas Totales</div><div class="value green">${fmt(p.total_ventas)}</div></div>
-      <div class="card"><div class="label">💰 Utilidad</div><div class="value blue">${fmt(p.total_utilidad)}</div></div>
-      <div class="card"><div class="label">📦 Pedidos</div><div class="value red">${p.total_pedidos}</div></div>
-      <div class="card"><div class="label">📊 Ticket Promedio</div><div class="value orange">${fmt(p.ticket_promedio)}</div></div>
+      <div class="card"><div class="label">Ventas Totales</div><div class="value" style="color:#2e7d32">${fmt(p.total_ventas)}</div></div>
+      <div class="card"><div class="label">Costo Productos</div><div class="value" style="color:#c62828">${fmt(totalCostoPDF)}</div></div>
+      <div class="card"><div class="label">Utilidad Neta</div><div class="value" style="color:#1565c0">${fmt(p.total_utilidad)}</div></div>
+      <div class="card"><div class="label">Margen</div><div class="value" style="color:${margen>=30?'#2e7d32':margen>=15?'#e65100':'#c62828'}">${margen}%</div></div>
+      <div class="card"><div class="label">Pedidos</div><div class="value" style="color:#6a1b9a">${p.total_pedidos}</div></div>
+      <div class="card"><div class="label">Ticket Promedio</div><div class="value" style="color:#e65100">${fmt(p.ticket_promedio)}</div></div>
     </div>
-    <div class="card" style="margin-bottom:24px">
-      <div class="label">Margen de Utilidad</div>
-      <div class="value" style="color:${margen>=30?'#2e7d32':margen>=15?'#e65100':'#c62828'}">${margen}%</div>
-      ${p.producto_mas_vendido?`<p style="margin:8px 0 0;color:#666;font-size:13px">🏆 Producto más vendido: <strong>${p.producto_mas_vendido}</strong></p>`:''}
+
+    ${p.producto_mas_vendido?`<div class="card" style="margin-bottom:24px"><p style="margin:0;color:#666;font-size:13px">Producto más vendido: <strong>${p.producto_mas_vendido}</strong></p></div>`:'<div style="margin-bottom:24px"></div>'}
+
+    <div class="chart-box">
+      <p class="chart-title">Gráfico 1 — Comparación por Tipo de Venta</p>
+      ${donutHtml}
     </div>
-    <h3>📊 Comparación por Tipo de Venta</h3>
-    <table><thead><tr><th>Tipo</th><th style="text-align:right">Total</th><th style="text-align:right">% del total</th></tr></thead><tbody>
-      <tr><td>📦 Pedidos</td><td style="text-align:right;font-weight:bold;color:#c62828">${fmt(totalPedidos)}</td><td style="text-align:right">${p.total_ventas>0?Math.round((totalPedidos/p.total_ventas)*100):0}%</td></tr>
-      <tr><td>🛒 Venta al Detalle</td><td style="text-align:right;font-weight:bold;color:#6a1b9a">${fmt(totalDetalle)}</td><td style="text-align:right">${p.total_ventas>0?Math.round((totalDetalle/p.total_ventas)*100):0}%</td></tr>
-      <tr style="background:#f5f5f5"><td><strong>TOTAL</strong></td><td style="text-align:right;font-weight:bold;color:#2e7d32">${fmt(p.total_ventas)}</td><td style="text-align:right">100%</td></tr>
-    </tbody></table>
-    ${ventasClientes.length>0?`<h3>👥 Ventas por Cliente (Pedidos)</h3>
+
+    ${productosVendidos.length > 0 ? `
+    <div class="chart-box">
+      <p class="chart-title">Gráfico 2 — Productos más Vendidos (unidades)</p>
+      ${productosBarHtml}
+    </div>` : ''}
+
+    ${ventasClientes.length > 0 ? `
+    <div class="chart-box">
+      <p class="chart-title">Gráfico 3 — Compras por Cliente ($)</p>
+      ${clientesBarHtml}
+    </div>` : ''}
+
+    ${ventasClientes.length>0?`<h3>Detalle — Ventas por Cliente</h3>
     <table><thead><tr><th>Cliente</th><th>Pedidos</th><th style="text-align:right">Total</th></tr></thead><tbody>
       ${ventasClientes.map(c=>`<tr><td>${c.nombre}</td><td>${c.pedidos}</td><td style="text-align:right;font-weight:bold;color:#2e7d32">${fmt(c.total)}</td></tr>`).join('')}
     </tbody></table>`:''}
-    ${ventasDetalleCli.length>0?`<h3>🛒 Ventas al Detalle por Comprador</h3>
+    ${ventasDetalleCli.length>0?`<h3>Detalle — Venta al Detalle por Comprador</h3>
     <table><thead><tr><th>Comprador</th><th>Ventas</th><th style="text-align:right">Total</th></tr></thead><tbody>
       ${ventasDetalleCli.map(c=>`<tr><td>${c.nombre}</td><td>${c.ventas}</td><td style="text-align:right;font-weight:bold;color:#6a1b9a">${fmt(c.total)}</td></tr>`).join('')}
     </tbody></table>`:''}
@@ -408,6 +486,7 @@ export default function PeriodosPage() {
   if (informe) {
     const { periodo: p, ventasClientes, ventasDetalleCli, totalPedidos, totalDetalle, totalEventos } = informe;
     const margen = p.total_ventas > 0 ? Math.round((p.total_utilidad / p.total_ventas) * 100) : 0;
+    const totalCosto = p.total_ventas - p.total_utilidad;
     return (
       <div className="p-4 md:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
@@ -427,9 +506,11 @@ export default function PeriodosPage() {
         <div className="grid grid-cols-2 gap-3 mb-4">
           {[
             { label: '📈 Ventas totales', value: fmt(p.total_ventas), color: '#4caf50' },
-            { label: '💰 Utilidad', value: fmt(p.total_utilidad), color: '#2196f3' },
-            { label: '📦 Pedidos', value: String(p.total_pedidos), color: '#e53935' },
+            { label: '🧾 Costo productos', value: fmt(totalCosto), color: '#e53935' },
+            { label: '💰 Utilidad neta', value: fmt(p.total_utilidad), color: '#2196f3' },
             { label: '📊 Ticket promedio', value: fmt(p.ticket_promedio), color: '#ff9800' },
+            { label: '📦 Pedidos', value: String(p.total_pedidos), color: '#9c27b0' },
+            { label: '📉 Margen', value: `${margen}%`, color: margen >= 30 ? '#4caf50' : margen >= 15 ? '#ff9800' : '#e53935' },
           ].map((s) => (
             <div key={s.label} className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
               <p className="text-xs mb-1" style={{ color: '#6b7280' }}>{s.label}</p>
@@ -438,17 +519,11 @@ export default function PeriodosPage() {
           ))}
         </div>
 
-        {/* Margen */}
-        <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
-          <div className="flex justify-between items-center mb-2">
-            <p className="text-xs font-bold" style={{ color: '#6b7280' }}>MARGEN DE UTILIDAD</p>
-            <p className="text-xl font-extrabold" style={{ color: margen >= 30 ? '#4caf50' : margen >= 15 ? '#ff9800' : '#e53935' }}>{margen}%</p>
+        {p.producto_mas_vendido && (
+          <div className="rounded-xl border px-4 py-3 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+            <p className="text-xs" style={{ color: '#6b7280' }}>🏆 Producto más vendido: <strong style={{ color: '#f5f5f5' }}>{p.producto_mas_vendido}</strong></p>
           </div>
-          <div className="w-full rounded-full h-3" style={{ backgroundColor: '#2a2a2a' }}>
-            <div className="h-3 rounded-full" style={{ width: `${Math.min(margen, 100)}%`, backgroundColor: margen >= 30 ? '#4caf50' : margen >= 15 ? '#ff9800' : '#e53935' }} />
-          </div>
-          {p.producto_mas_vendido && <p className="text-xs mt-2" style={{ color: '#6b7280' }}>🏆 Más vendido: <strong style={{ color: '#f5f5f5' }}>{p.producto_mas_vendido}</strong></p>}
-        </div>
+        )}
 
         {/* Gráfico 1: Comparación por tipo de venta (donut) */}
         <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
