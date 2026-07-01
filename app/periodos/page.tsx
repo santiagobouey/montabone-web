@@ -185,7 +185,7 @@ export default function PeriodosPage() {
       }
 
       if (resetearStock) {
-        await supabase.from('productos').update({ stock: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('productos').update({ stock: 0, fecha_vencimiento: null }).neq('id', '00000000-0000-0000-0000-000000000000');
       }
 
       setNombre(''); setResetearStock(false); setShowModal(false);
