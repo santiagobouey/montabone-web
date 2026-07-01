@@ -592,8 +592,7 @@ export default function PedidosPage() {
                   <p className="font-extrabold text-lg" style={{ color: '#f5f5f5' }}>{fmt(p.total)}</p>
                   {(() => {
                     const utilidad = (p.detalle || []).reduce((s, d) => s + (d.precio_unitario - (d.producto?.costo ?? 0)) * d.cantidad, 0);
-                    if (utilidad === 0) return null;
-                    return <p className="text-xs font-semibold" style={{ color: utilidad > 0 ? '#4caf50' : '#e53935' }}>Utilidad: {fmt(utilidad)}</p>;
+                    return <p className="text-xs font-semibold" style={{ color: utilidad > 0 ? '#4caf50' : utilidad < 0 ? '#e53935' : '#6b7280' }}>Utilidad: {fmt(utilidad)}</p>;
                   })()}
                 </div>
                 <div className="flex gap-2">
