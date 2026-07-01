@@ -200,6 +200,23 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {/* Utilidad del mes destacada */}
+      {(() => {
+        const util = stats?.utilidadMes ?? 0;
+        const ventas = stats?.ventasMes ?? 0;
+        const margen = ventas > 0 ? Math.round((util / ventas) * 100) : 0;
+        const color = util > 0 ? '#4caf50' : util < 0 ? '#e53935' : '#6b7280';
+        return (
+          <div className="rounded-xl border p-5 mb-4" style={{ backgroundColor: '#141414', borderColor: color + '60', borderLeftWidth: 4, borderLeftColor: color }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>💰 Utilidad de {MESES[new Date().getMonth()]}</p>
+            <p className="text-4xl font-extrabold" style={{ color }}>{fmt(util)}</p>
+            <p className="text-xs mt-1" style={{ color: '#6b7280' }}>
+              Ventas {fmt(ventas)} · Margen <span style={{ color }}>{margen}%</span>
+            </p>
+          </div>
+        );
+      })()}
+
       {/* Estadísticas del mes */}
       <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
         <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6b7280' }}>📊 {MESES[new Date().getMonth()]} {new Date().getFullYear()}</p>
@@ -210,7 +227,7 @@ export default function DashboardPage() {
           </div>
           <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>💰 Utilidad del mes</p>
-            <p className="text-xl font-extrabold" style={{ color: '#2196f3' }}>{fmt(stats?.utilidadMes ?? 0)}</p>
+            <p className="text-xl font-extrabold" style={{ color: (stats?.utilidadMes ?? 0) < 0 ? '#e53935' : '#2196f3' }}>{fmt(stats?.utilidadMes ?? 0)}</p>
           </div>
           <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>📦 Pedidos del mes</p>
