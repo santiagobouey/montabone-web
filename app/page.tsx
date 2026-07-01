@@ -20,6 +20,7 @@ interface PuntoVenta {
 interface Stats {
   // Mes
   ventasMes: number;
+  ventasDetalleMes: number;
   utilidadMes: number;
   pedidosMes: number;
   ticketPromedio: number;
@@ -145,6 +146,7 @@ export default function DashboardPage() {
         setProductos(prods);
         setStats({
           ventasMes,
+          ventasDetalleMes: ventasDetalle,
           utilidadMes,
           pedidosMes: pedidosMes.length,
           ticketPromedio,
@@ -215,6 +217,10 @@ export default function DashboardPage() {
           <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>💰 Utilidad del mes</p>
             <p className="text-xl font-extrabold" style={{ color: (stats?.utilidadMes ?? 0) < 0 ? '#e53935' : '#2196f3' }}>{fmt(stats?.utilidadMes ?? 0)}</p>
+          </div>
+          <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
+            <p className="text-xs mb-1" style={{ color: '#6b7280' }}>🛒 Ventas al detalle</p>
+            <p className="text-xl font-extrabold" style={{ color: '#9c27b0' }}>{fmt(stats?.ventasDetalleMes ?? 0)}</p>
           </div>
           <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>📦 Pedidos del mes</p>
