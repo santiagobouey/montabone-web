@@ -12,6 +12,7 @@ const nav = [
   { href: '/ventas-mes', label: 'Venta Mensual', icon: '📈' },
   { href: '/ventas-eventos', label: 'Eventos', icon: '🎪' },
   { href: '/inventario', label: 'Inventario', icon: '🗃️' },
+  { href: '/costos', label: 'Costos', icon: '🏷️' },
   { href: '/cobros', label: 'Cobros', icon: '💰' },
   { href: '/gastos', label: 'Gastos', icon: '🧾' },
   { href: '/periodos', label: 'Períodos', icon: '🔒' },
