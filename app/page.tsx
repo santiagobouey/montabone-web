@@ -67,6 +67,7 @@ export default function DashboardPage() {
           prospectoRes,
           pedidosPorClienteRes,
           facturasMesRes,
+          detallePendienteRes,
         ] = await Promise.all([
           supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
@@ -79,6 +80,7 @@ export default function DashboardPage() {
           supabase.from('prospectos').select('id, nombre_local, nombre_contacto, proxima_visita').in('estado', ['potencial', 'contactado', 'pendiente']),
           supabase.from('pedidos').select('cliente_id, fecha').order('fecha', { ascending: false }),
           supabase.from('costos_factura').select('monto').gte('created_at', inicioMes).lte('created_at', finMes + 'T23:59:59'),
+          supabase.from('ventas_detalle').select('id, total').in('estado', ['pendiente', 'preparado']),
         ]);
 
         const pedidosMes = (pedidosMesRes.data || []) as any[];
@@ -155,8 +157,8 @@ export default function DashboardPage() {
           puntosActivos: puntosVenta.filter((p) => p.activo).length,
           puntosInactivos: puntosVenta.filter((p) => !p.activo).length,
           puntosVenta,
-          pedidosPendientes: pedidosPendientesRes.data?.length || 0,
-          totalPorCobrar: (cobroRes.data || []).reduce((s, p) => s + p.total, 0),
+          pedidosPendientes: (pedidosPendientesRes.data?.length || 0) + (detallePendienteRes.data?.length || 0),
+          totalPorCobrar: (cobroRes.data || []).reduce((s, p) => s + p.total, 0) + (detallePendienteRes.data || []).reduce((s, v) => s + v.total, 0),
           stockBajo: prods.filter((p) => p.stock <= 10),
           prospectosParaInsistir: (prospectoRes.data || []).filter((p: any) => p.proxima_visita && p.proxima_visita <= hoyStr),
           totalMuestras: muestrasData.reduce((s, m) => s + (m.cantidad || 0), 0),
