@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { Producto } from '@/types';
 
@@ -212,47 +213,47 @@ export default function DashboardPage() {
       <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
         <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6b7280' }}>📊 {MESES[new Date().getMonth()]} {new Date().getFullYear()}</p>
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
+          <Link href="/ventas-mes" className="rounded-lg p-3 block transition-colors hover:brightness-125" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>📈 Ventas del mes</p>
             <p className="text-xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(stats?.ventasMes ?? 0)}</p>
-          </div>
-          <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
+          </Link>
+          <Link href="/periodos" className="rounded-lg p-3 block transition-colors hover:brightness-125" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>💰 Utilidad del mes</p>
             <p className="text-xl font-extrabold" style={{ color: (stats?.utilidadMes ?? 0) < 0 ? '#e53935' : '#2196f3' }}>{fmt(stats?.utilidadMes ?? 0)}</p>
-          </div>
-          <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
+          </Link>
+          <Link href="/ventas-mes" className="rounded-lg p-3 block transition-colors hover:brightness-125" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>🛒 Ventas al detalle</p>
             <p className="text-xl font-extrabold" style={{ color: '#9c27b0' }}>{fmt(stats?.ventasDetalleMes ?? 0)}</p>
-          </div>
-          <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
+          </Link>
+          <Link href="/pedidos" className="rounded-lg p-3 block transition-colors hover:brightness-125" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>📦 Pedidos del mes</p>
             <p className="text-xl font-extrabold" style={{ color: '#e53935' }}>{stats?.pedidosMes ?? 0}</p>
-          </div>
+          </Link>
           <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>📊 Ticket promedio</p>
             <p className="text-xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(stats?.ticketPromedio ?? 0)}</p>
           </div>
-          <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
+          <Link href="/clientes" className="rounded-lg p-3 block transition-colors hover:brightness-125" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>👥 Clientes registrados</p>
             <p className="text-xl font-extrabold" style={{ color: '#9c27b0' }}>{stats?.clientesRegistrados ?? 0}</p>
-          </div>
-          <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
+          </Link>
+          <Link href="/inventario" className="rounded-lg p-3 block transition-colors hover:brightness-125" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>🏆 Más vendido</p>
             <p className="text-sm font-extrabold leading-tight" style={{ color: '#f5f5f5' }}>{stats?.productoMasVendido ?? '—'}</p>
-          </div>
+          </Link>
         </div>
       </div>
 
       {/* Alertas rápidas */}
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <div className="rounded-xl p-4 border" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
-          <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>Pendientes</p>
+        <Link href="/pedidos?estado=pendiente" className="rounded-xl p-4 border block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+          <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>Pendientes ›</p>
           <p className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{stats?.pedidosPendientes ?? 0}</p>
-        </div>
-        <div className="rounded-xl p-4 border" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
-          <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>Por Cobrar</p>
+        </Link>
+        <Link href="/cobros" className="rounded-xl p-4 border block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+          <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>Por Cobrar ›</p>
           <p className="text-2xl font-extrabold" style={{ color: '#e53935' }}>{fmt(stats?.totalPorCobrar ?? 0)}</p>
-        </div>
+        </Link>
       </div>
 
       {/* Alerta prospectos */}

@@ -49,6 +49,13 @@ export default function PedidosPage() {
   const [ventasDetalle, setVentasDetalle] = useState<VentaDetalle[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<EstadoPedido | 'todos'>('todos');
+
+  // Filtro inicial desde la URL (?estado=pendiente)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const estado = params.get('estado');
+    if (estado && ESTADOS.includes(estado as EstadoPedido)) setFiltro(estado as EstadoPedido);
+  }, []);
   const [showModal, setShowModal] = useState(false);
   const [showSelectorMes, setShowSelectorMes] = useState(false);
 
