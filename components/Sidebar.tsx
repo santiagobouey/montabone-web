@@ -13,6 +13,7 @@ const nav = [
   { href: '/ventas-eventos', label: 'Eventos', icon: '🎪' },
   { href: '/inventario', label: 'Inventario', icon: '🗃️' },
   { href: '/costos', label: 'Costos', icon: '🏷️' },
+  { href: '/facturas', label: 'Facturas', icon: '🧾' },
   { href: '/cobros', label: 'Cobros', icon: '💰' },
   { href: '/gastos', label: 'Gastos', icon: '🧾' },
   { href: '/periodos', label: 'Períodos', icon: '🔒' },
