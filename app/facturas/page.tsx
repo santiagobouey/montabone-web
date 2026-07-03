@@ -11,6 +11,8 @@ interface Factura {
   id: string;
   tipo: Tipo;
   monto: number;
+  neto: number;
+  iva: number;
   contraparte: string | null;
   descripcion: string | null;
   fecha: string;
@@ -29,11 +31,15 @@ export default function FacturasPage() {
 
   // Form
   const [tipo, setTipo] = useState<Tipo>('compra');
-  const [monto, setMonto] = useState('');
+  const [neto, setNeto] = useState('');
   const [contraparte, setContraparte] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [archivo, setArchivo] = useState<File | null>(null);
+
+  const netoNum = neto ? parseInt(neto) : 0;
+  const ivaNum = Math.round(netoNum * 0.19);
+  const totalNum = netoNum + ivaNum;
 
   const fetchFacturas = useCallback(async () => {
     const { data } = await supabase.from('facturas').select('*').order('fecha', { ascending: false });
@@ -43,13 +49,13 @@ export default function FacturasPage() {
   useEffect(() => { fetchFacturas().finally(() => setLoading(false)); }, [fetchFacturas]);
 
   function abrirNueva(t: Tipo) {
-    setTipo(t); setMonto(''); setContraparte(''); setDescripcion('');
+    setTipo(t); setNeto(''); setContraparte(''); setDescripcion('');
     setFecha(new Date().toISOString().split('T')[0]); setArchivo(null);
     setShowModal(true);
   }
 
   async function guardar() {
-    if (!monto) return;
+    if (netoNum <= 0) return;
     setSaving(true);
     try {
       let archivoUrl: string | null = null;
@@ -64,7 +70,7 @@ export default function FacturasPage() {
         archivoNombre = archivo.name;
       }
       const { error } = await supabase.from('facturas').insert({
-        tipo, monto: parseInt(monto), contraparte: contraparte || null,
+        tipo, monto: totalNum, neto: netoNum, iva: ivaNum, contraparte: contraparte || null,
         descripcion: descripcion || null, fecha,
         archivo_url: archivoUrl, archivo_nombre: archivoNombre,
       });
@@ -166,6 +172,7 @@ export default function FacturasPage() {
                     <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(f.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
                   </div>
                   <p className="font-bold" style={{ color: '#f5f5f5' }}>{fmt(f.monto)}</p>
+                  {(f.neto > 0 || f.iva > 0) && <p className="text-xs" style={{ color: '#6b7280' }}>Neto {fmt(f.neto)} + IVA {fmt(f.iva)}</p>}
                   {f.contraparte && <p className="text-sm" style={{ color: '#9ca3af' }}>{f.contraparte}</p>}
                   {f.descripcion && <p className="text-xs" style={{ color: '#6b7280' }}>{f.descripcion}</p>}
                   {f.archivo_url && (
@@ -210,11 +217,26 @@ export default function FacturasPage() {
               ))}
             </div>
 
-            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Monto</label>
+            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Monto neto</label>
             <div className="flex items-center gap-2 mb-3">
               <span style={{ color: '#6b7280' }}>$</span>
-              <input type="number" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="ej: 150.000"
+              <input type="number" value={neto} onChange={(e) => setNeto(e.target.value)} placeholder="ej: 126.050"
                 className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="rounded-lg p-2 text-center" style={{ backgroundColor: '#1c1c1c' }}>
+                <p className="text-xs" style={{ color: '#6b7280' }}>Neto</p>
+                <p className="text-sm font-bold" style={{ color: '#9ca3af' }}>{fmt(netoNum)}</p>
+              </div>
+              <div className="rounded-lg p-2 text-center" style={{ backgroundColor: '#1c1c1c' }}>
+                <p className="text-xs" style={{ color: '#6b7280' }}>IVA 19%</p>
+                <p className="text-sm font-bold" style={{ color: '#ff9800' }}>{fmt(ivaNum)}</p>
+              </div>
+              <div className="rounded-lg p-2 text-center" style={{ backgroundColor: colorTipo(tipo) + '15' }}>
+                <p className="text-xs" style={{ color: '#6b7280' }}>Total</p>
+                <p className="text-sm font-extrabold" style={{ color: colorTipo(tipo) }}>{fmt(totalNum)}</p>
+              </div>
             </div>
 
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>{tipo === 'emitida' ? 'Cliente' : 'Proveedor'} (opcional)</label>
@@ -235,7 +257,7 @@ export default function FacturasPage() {
             {archivo && <p className="text-xs mb-3" style={{ color: '#4caf50' }}>✓ {archivo.name}</p>}
             {!archivo && <div className="mb-3" />}
 
-            <button onClick={guardar} disabled={saving || !monto}
+            <button onClick={guardar} disabled={saving || netoNum <= 0}
               className="w-full py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40"
               style={{ backgroundColor: colorTipo(tipo) }}>
               {saving ? 'Subiendo...' : 'Guardar factura'}

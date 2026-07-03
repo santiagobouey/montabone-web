@@ -8,6 +8,8 @@ const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 interface FacturaCosto {
   id: string;
   monto: number;
+  neto: number;
+  iva: number;
   descripcion: string | null;
   created_at: string;
 }
@@ -16,27 +18,29 @@ export default function CostosPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [guardado, setGuardado] = useState(false);
-  const [monto, setMonto] = useState('');
+  const [neto, setNeto] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [historial, setHistorial] = useState<FacturaCosto[]>([]);
   const [facturaAEliminar, setFacturaAEliminar] = useState<FacturaCosto | null>(null);
 
   const fetchDatos = useCallback(async () => {
-    const { data } = await supabase.from('costos_factura').select('id, monto, descripcion, created_at').is('periodo_id', null).order('created_at', { ascending: false });
+    const { data } = await supabase.from('costos_factura').select('id, monto, neto, iva, descripcion, created_at').is('periodo_id', null).order('created_at', { ascending: false });
     setHistorial((data || []) as FacturaCosto[]);
   }, []);
 
   useEffect(() => { fetchDatos().finally(() => setLoading(false)); }, [fetchDatos]);
 
-  const montoNum = monto ? parseInt(monto) : 0;
+  const netoNum = neto ? parseInt(neto) : 0;
+  const ivaNum = Math.round(netoNum * 0.19);
+  const totalNum = netoNum + ivaNum;
   const totalPagado = historial.reduce((s, f) => s + f.monto, 0);
 
   async function guardar() {
-    if (montoNum <= 0) return;
+    if (netoNum <= 0) return;
     setSaving(true);
     try {
-      await supabase.from('costos_factura').insert({ monto: montoNum, descripcion: descripcion || null });
-      setMonto(''); setDescripcion('');
+      await supabase.from('costos_factura').insert({ monto: totalNum, neto: netoNum, iva: ivaNum, descripcion: descripcion || null });
+      setNeto(''); setDescripcion('');
       await fetchDatos();
       setGuardado(true);
       setTimeout(() => setGuardado(false), 2500);
@@ -73,18 +77,34 @@ export default function CostosPage() {
       <div className="rounded-xl border p-4 mb-6" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
         <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6b7280' }}>➕ Ingresar factura</p>
 
-        <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Monto pagado</label>
+        <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Monto neto</label>
         <div className="flex items-center gap-2 mb-3">
           <span style={{ color: '#6b7280' }}>$</span>
-          <input type="number" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="ej: 1.500.000"
+          <input type="number" value={neto} onChange={(e) => setNeto(e.target.value)} placeholder="ej: 1.260.504"
             className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+        </div>
+
+        {/* Desglose IVA / Total */}
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          <div className="rounded-lg p-2 text-center" style={{ backgroundColor: '#1c1c1c' }}>
+            <p className="text-xs" style={{ color: '#6b7280' }}>Neto</p>
+            <p className="text-sm font-bold" style={{ color: '#9ca3af' }}>{fmt(netoNum)}</p>
+          </div>
+          <div className="rounded-lg p-2 text-center" style={{ backgroundColor: '#1c1c1c' }}>
+            <p className="text-xs" style={{ color: '#6b7280' }}>IVA 19%</p>
+            <p className="text-sm font-bold" style={{ color: '#ff9800' }}>{fmt(ivaNum)}</p>
+          </div>
+          <div className="rounded-lg p-2 text-center" style={{ backgroundColor: '#4caf5015' }}>
+            <p className="text-xs" style={{ color: '#6b7280' }}>Total</p>
+            <p className="text-sm font-extrabold" style={{ color: '#4caf50' }}>{fmt(totalNum)}</p>
+          </div>
         </div>
 
         <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Descripción (opcional)</label>
         <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="ej: Producción chorizos, insumos..."
           className="w-full rounded-lg px-3 py-2 text-sm border mb-4" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
 
-        <button onClick={guardar} disabled={saving || montoNum <= 0}
+        <button onClick={guardar} disabled={saving || netoNum <= 0}
           className="w-full py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40"
           style={{ backgroundColor: guardado ? '#4caf50' : '#e53935' }}>
           {saving ? 'Guardando...' : guardado ? '✓ Guardado' : 'Guardar factura'}
@@ -101,6 +121,9 @@ export default function CostosPage() {
             <div key={f.id} className="flex items-center justify-between px-4 py-3" style={{ borderBottom: i < historial.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
               <div className="min-w-0">
                 <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{fmt(f.monto)}</p>
+                {(f.neto > 0 || f.iva > 0) && (
+                  <p className="text-xs" style={{ color: '#6b7280' }}>Neto {fmt(f.neto)} + IVA {fmt(f.iva)}</p>
+                )}
                 <p className="text-xs truncate" style={{ color: '#6b7280' }}>{f.descripcion || 'Sin descripción'} · {new Date(f.created_at).toLocaleDateString('es-CL')}</p>
               </div>
               <button onClick={() => setFacturaAEliminar(f)}
