@@ -165,15 +165,10 @@ export default function FacturasPage() {
         </div>
       </div>
 
-      {/* Botones subir */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
-        <button onClick={() => abrirNueva('emitida')} className="py-3 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#4caf50' }}>
-          + Factura emitida
-        </button>
-        <button onClick={() => abrirNueva('compra')} className="py-3 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#e53935' }}>
-          + Factura de compra
-        </button>
-      </div>
+      {/* Botón subir */}
+      <button onClick={() => abrirNueva('compra')} className="w-full py-4 rounded-xl font-bold text-sm text-white mb-4" style={{ backgroundColor: '#e53935' }}>
+        📎 Subir factura — la IA detecta todo automáticamente
+      </button>
 
       {/* Filtro */}
       <div className="flex gap-2 mb-4">
@@ -234,9 +229,7 @@ export default function FacturasPage() {
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
           <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[90vh]" style={{ backgroundColor: '#141414' }}>
             <div className="flex justify-between items-center mb-4">
-              <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>
-                {tipo === 'emitida' ? '📤 Factura emitida' : '📥 Factura de compra'}
-              </h2>
+              <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>📎 Subir Factura</h2>
               <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
@@ -252,7 +245,11 @@ export default function FacturasPage() {
                   <p className="text-xs" style={{ color: '#ff9800' }}>Leyendo factura con IA...</p>
                 </div>
               )}
-              {analizado && <p className="text-xs mt-2" style={{ color: '#4caf50' }}>✓ Datos extraídos — revisa que estén correctos</p>}
+              {analizado && (
+                <p className="text-xs mt-2" style={{ color: '#4caf50' }}>
+                  ✓ Detectada como factura {tipo === 'emitida' ? 'EMITIDA (venta a cliente)' : 'DE COMPRA (pagada a proveedor)'} — revisa los datos y guarda
+                </p>
+              )}
               {archivo && !analizando && <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{archivo.name}</p>}
             </div>
 
