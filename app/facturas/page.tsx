@@ -36,6 +36,8 @@ export default function FacturasPage() {
   const [descripcion, setDescripcion] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [archivo, setArchivo] = useState<File | null>(null);
+  const [analizando, setAnalizando] = useState(false);
+  const [analizado, setAnalizado] = useState(false);
 
   const netoNum = neto ? parseInt(neto) : 0;
   const ivaNum = Math.round(netoNum * 0.19);
@@ -51,7 +53,42 @@ export default function FacturasPage() {
   function abrirNueva(t: Tipo) {
     setTipo(t); setNeto(''); setContraparte(''); setDescripcion('');
     setFecha(new Date().toISOString().split('T')[0]); setArchivo(null);
+    setAnalizando(false); setAnalizado(false);
     setShowModal(true);
+  }
+
+  async function analizarArchivo(file: File) {
+    setArchivo(file);
+    setAnalizado(false);
+    setAnalizando(true);
+    try {
+      // Convertir a base64
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch('/api/leer-factura', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64, mediaType: file.type }),
+      });
+      if (!res.ok) throw new Error('No se pudo analizar');
+      const datos = await res.json();
+
+      if (datos.tipo === 'emitida' || datos.tipo === 'compra') setTipo(datos.tipo);
+      if (datos.neto) setNeto(String(datos.neto));
+      else if (datos.total) setNeto(String(Math.round(datos.total / 1.19)));
+      if (datos.contraparte) setContraparte(datos.contraparte);
+      if (datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha)) setFecha(datos.fecha);
+      if (datos.numero) setDescripcion(`Factura N° ${datos.numero}`);
+      setAnalizado(true);
+    } catch {
+      // Si falla el análisis, el usuario llena los datos a mano
+    }
+    setAnalizando(false);
   }
 
   async function guardar() {
@@ -203,6 +240,22 @@ export default function FacturasPage() {
               <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
+            {/* Subir archivo primero: se analiza con IA */}
+            <div className="rounded-lg border p-3 mb-4" style={{ borderColor: analizado ? '#4caf50' : '#2a2a2a', backgroundColor: analizado ? '#4caf5010' : '#1c1c1c' }}>
+              <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>📎 Sube la factura (PDF o foto) y se llena solo</label>
+              <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) analizarArchivo(f); }}
+                className="w-full text-sm" style={{ color: '#9ca3af' }} disabled={analizando} />
+              {analizando && (
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-xs" style={{ color: '#ff9800' }}>Leyendo factura con IA...</p>
+                </div>
+              )}
+              {analizado && <p className="text-xs mt-2" style={{ color: '#4caf50' }}>✓ Datos extraídos — revisa que estén correctos</p>}
+              {archivo && !analizando && <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{archivo.name}</p>}
+            </div>
+
             <div className="flex gap-2 mb-4">
               {(['compra', 'emitida'] as const).map((t) => (
                 <button key={t} onClick={() => setTipo(t)}
@@ -251,13 +304,7 @@ export default function FacturasPage() {
             <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="ej: N° factura, detalle..."
               className="w-full rounded-lg px-3 py-2 text-sm border mb-3" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
 
-            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Archivo (PDF o foto)</label>
-            <input type="file" accept="image/*,application/pdf" onChange={(e) => setArchivo(e.target.files?.[0] || null)}
-              className="w-full text-sm mb-1" style={{ color: '#9ca3af' }} />
-            {archivo && <p className="text-xs mb-3" style={{ color: '#4caf50' }}>✓ {archivo.name}</p>}
-            {!archivo && <div className="mb-3" />}
-
-            <button onClick={guardar} disabled={saving || netoNum <= 0}
+            <button onClick={guardar} disabled={saving || netoNum <= 0 || analizando}
               className="w-full py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40"
               style={{ backgroundColor: colorTipo(tipo) }}>
               {saving ? 'Subiendo...' : 'Guardar factura'}
