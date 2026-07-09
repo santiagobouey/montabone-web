@@ -55,7 +55,7 @@ export interface DetallePedido {
   producto?: Producto;
 }
 
-export type EstadoProspecto = 'potencial' | 'contactado' | 'pendiente' | 'cerrado';
+export type EstadoProspecto = 'potencial' | 'contactado' | 'pendiente' | 'cerrado' | 'no_interesado';
 
 export interface Prospecto {
   id: string;

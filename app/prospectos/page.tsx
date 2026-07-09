@@ -9,9 +9,12 @@ const TIPO_LABELS: Record<TipoCliente, string> = {
   carniceria: 'Carnicería', distribuidor: 'Distribuidor', restaurante: 'Restaurante',
   supermercado: 'Supermercado', particular: 'Particular', botilleria: 'Botillería', otro: 'Otro',
 };
-const ESTADOS: EstadoProspecto[] = ['potencial', 'contactado', 'pendiente', 'cerrado'];
+const ESTADOS: EstadoProspecto[] = ['potencial', 'contactado', 'pendiente', 'cerrado', 'no_interesado'];
 const ESTADO_COLORS: Record<EstadoProspecto, string> = {
-  potencial: '#2196f3', contactado: '#ff9800', pendiente: '#9c27b0', cerrado: '#4caf50',
+  potencial: '#2196f3', contactado: '#ff9800', pendiente: '#9c27b0', cerrado: '#4caf50', no_interesado: '#e53935',
+};
+const ESTADO_LABELS: Record<EstadoProspecto, string> = {
+  potencial: 'potencial', contactado: 'contactado', pendiente: 'pendiente', cerrado: 'cerrado', no_interesado: 'no interesado',
 };
 const COMUNAS_SANTIAGO = [
   'Cerrillos', 'Cerro Navia', 'Conchalí', 'El Bosque', 'Estación Central',
@@ -156,7 +159,7 @@ export default function ProspectosPage() {
   async function handleNoInteres() {
     if (!editando) return;
     try {
-      await supabase.from('prospectos').update({ estado: 'cerrado', proxima_visita: null }).eq('id', editando.id);
+      await supabase.from('prospectos').update({ estado: 'no_interesado', proxima_visita: null }).eq('id', editando.id);
       cerrarModal();
       await fetchProspectos();
     } catch (e: unknown) {
@@ -190,6 +193,7 @@ export default function ProspectosPage() {
   const contactados = filtrar(prospectos.filter((p) => p.estado === 'contactado'));
   const pendientes = filtrar(prospectos.filter((p) => p.estado === 'pendiente'));
   const cerrados = filtrar(prospectos.filter((p) => p.estado === 'cerrado'));
+  const noInteresados = filtrar(prospectos.filter((p) => p.estado === 'no_interesado'));
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
@@ -225,7 +229,8 @@ export default function ProspectosPage() {
           { label: '🔵 Potenciales', lista: potenciales, color: '#2196f3' },
           { label: '🟠 Contactados', lista: contactados, color: '#ff9800' },
           { label: '🟣 Pendientes de seguimiento', lista: pendientes, color: '#9c27b0' },
-          { label: '✅ Cerrados / No interesados', lista: cerrados, color: '#6b7280' },
+          { label: '✅ Cerrados (convertidos a cliente)', lista: cerrados, color: '#4caf50' },
+          { label: '❌ No interesados', lista: noInteresados, color: '#e53935' },
         ].map(({ label, lista, color }) => lista.length > 0 && (
           <div key={label}>
             <p className="text-xs font-bold uppercase mb-2" style={{ color }}>{label} ({lista.length})</p>
@@ -307,7 +312,7 @@ export default function ProspectosPage() {
               {ESTADOS.map((e) => (
                 <button key={e} onClick={() => setEstado(e)} className="px-3 py-1.5 rounded-full border text-xs font-medium"
                   style={{ backgroundColor: estado === e ? ESTADO_COLORS[e] + '20' : 'transparent', borderColor: estado === e ? ESTADO_COLORS[e] : '#2a2a2a', color: estado === e ? ESTADO_COLORS[e] : '#6b7280' }}>
-                  {e}
+                  {ESTADO_LABELS[e]}
                 </button>
               ))}
             </div>
