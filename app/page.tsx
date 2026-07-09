@@ -18,6 +18,8 @@ interface PuntoVenta {
   activoManual: boolean | null;
 }
 
+interface EstadoResumen { n: number; total: number; }
+
 interface Stats {
   // Mes
   ventasMes: number;
@@ -26,6 +28,8 @@ interface Stats {
   pedidosMes: number;
   ticketPromedio: number;
   productoMasVendido: string;
+  pedidosPorEstado: Record<string, EstadoResumen>;
+  detallePorEstado: Record<string, EstadoResumen>;
   // General
   clientesRegistrados: number;
   puntosActivos: number;
@@ -69,6 +73,8 @@ export default function DashboardPage() {
           pedidosPorClienteRes,
           facturasMesRes,
           detallePendienteRes,
+          pedidosEstadoRes,
+          detalleEstadoRes,
         ] = await Promise.all([
           supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
@@ -82,6 +88,8 @@ export default function DashboardPage() {
           supabase.from('pedidos').select('cliente_id, fecha').order('fecha', { ascending: false }),
           supabase.from('costos_factura').select('monto').gte('created_at', inicioMes).lte('created_at', finMes + 'T23:59:59'),
           supabase.from('ventas_detalle').select('id, total').in('estado', ['pendiente', 'preparado']),
+          supabase.from('pedidos').select('estado, total').gte('fecha', inicioMes).lte('fecha', finMes),
+          supabase.from('ventas_detalle').select('estado, total').gte('fecha', inicioMes).lte('fecha', finMes),
         ]);
 
         const pedidosMes = (pedidosMesRes.data || []) as any[];
@@ -101,6 +109,18 @@ export default function DashboardPage() {
         // Utilidad del mes = ventas del mes - facturas (costos) del mes
         const facturasMes = ((facturasMesRes.data || []) as any[]).reduce((s, f) => s + f.monto, 0);
         const utilidadMes = ventasMes - facturasMes;
+
+        // Desglose por estado (pedidos a locales y ventas al detalle del mes)
+        const agruparPorEstado = (filas: any[]) => {
+          const map: Record<string, EstadoResumen> = {};
+          for (const f of filas) {
+            if (!map[f.estado]) map[f.estado] = { n: 0, total: 0 };
+            map[f.estado].n += 1; map[f.estado].total += f.total;
+          }
+          return map;
+        };
+        const pedidosPorEstado = agruparPorEstado((pedidosEstadoRes.data || []) as any[]);
+        const detallePorEstado = agruparPorEstado((detalleEstadoRes.data || []) as any[]);
 
         // Pedidos del mes
         const totalTransacciones = pedidosMes.length + detallesMes.length + eventosMes.length;
@@ -151,6 +171,8 @@ export default function DashboardPage() {
           ventasMes,
           ventasDetalleMes: ventasDetalle,
           utilidadMes,
+          pedidosPorEstado,
+          detallePorEstado,
           pedidosMes: pedidosMes.length,
           ticketPromedio,
           productoMasVendido,
@@ -243,6 +265,45 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Ventas por estado */}
+      {(() => {
+        const ESTADOS_ORDEN = [
+          { key: 'pendiente', label: 'Pendiente', color: '#ff9800' },
+          { key: 'preparado', label: 'Preparado', color: '#2196f3' },
+          { key: 'entregado', label: 'Entregado', color: '#4caf50' },
+          { key: 'pagado', label: 'Pagado', color: '#6b7280' },
+        ];
+        const bloques = [
+          { titulo: '📦 Pedidos a locales', data: stats?.pedidosPorEstado ?? {}, href: '/pedidos' },
+          { titulo: '🛒 Ventas al detalle', data: stats?.detallePorEstado ?? {}, href: '/pedidos' },
+        ];
+        return (
+          <div className="grid md:grid-cols-2 gap-3 mb-4">
+            {bloques.map((b) => (
+              <div key={b.titulo} className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+                <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6b7280' }}>{b.titulo} — {MESES[new Date().getMonth()]}</p>
+                <div className="space-y-2">
+                  {ESTADOS_ORDEN.map((e) => {
+                    const r = b.data[e.key];
+                    return (
+                      <Link key={e.key} href={`${b.href}?estado=${e.key}`} className="flex items-center justify-between rounded-lg px-3 py-2 transition-colors hover:brightness-125" style={{ backgroundColor: '#1c1c1c' }}>
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: e.color + '20', color: e.color }}>
+                          {e.label}
+                        </span>
+                        <div className="text-right">
+                          <span className="text-sm font-extrabold" style={{ color: e.color }}>{r?.n ?? 0}</span>
+                          <span className="text-xs ml-2" style={{ color: '#6b7280' }}>{fmt(r?.total ?? 0)}</span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Alertas rápidas */}
       <div className="grid grid-cols-2 gap-3 mb-4">
