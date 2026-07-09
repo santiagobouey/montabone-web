@@ -17,6 +17,7 @@ const nav = [
   { href: '/cobros', label: 'Cobros', icon: '💰' },
   { href: '/gastos', label: 'Gastos', icon: '🧾' },
   { href: '/periodos', label: 'Períodos', icon: '🔒' },
+  { href: '/tareas', label: 'Pendientes', icon: '✅' },
   { href: '/reportes', label: 'Reportes', icon: '📊' },
 ];
 
