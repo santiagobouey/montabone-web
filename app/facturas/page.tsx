@@ -141,6 +141,12 @@ export default function FacturasPage() {
   const totalEmitidas = facturas.filter((f) => f.tipo === 'emitida').reduce((s, f) => s + f.monto, 0);
   const totalCompras = facturas.filter((f) => f.tipo === 'compra').reduce((s, f) => s + f.monto, 0);
 
+  // IVA: si la factura no tiene iva guardado (registros antiguos), se estima desde el total
+  const ivaDe = (f: Factura) => (f.iva > 0 ? f.iva : f.monto - Math.round(f.monto / 1.19));
+  const ivaDebito = facturas.filter((f) => f.tipo === 'emitida').reduce((s, f) => s + ivaDe(f), 0);
+  const ivaCredito = facturas.filter((f) => f.tipo === 'compra').reduce((s, f) => s + ivaDe(f), 0);
+  const ivaAPagar = ivaDebito - ivaCredito;
+
   const colorTipo = (t: Tipo) => (t === 'emitida' ? '#4caf50' : '#e53935');
   const labelTipo = (t: Tipo) => (t === 'emitida' ? 'Emitida' : 'Compra');
 
@@ -153,15 +159,28 @@ export default function FacturasPage() {
         </div>
       </div>
 
+      {/* IVA a pagar */}
+      <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: ivaAPagar > 0 ? '#ff9800' : '#4caf50' }}>
+        <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>🏛️ IVA a pagar (F29)</p>
+        <p className="text-3xl font-extrabold" style={{ color: ivaAPagar > 0 ? '#ff9800' : '#4caf50' }}>
+          {ivaAPagar > 0 ? fmt(ivaAPagar) : ivaAPagar < 0 ? `${fmt(Math.abs(ivaAPagar))} a favor` : fmt(0)}
+        </p>
+        <p className="text-xs mt-1" style={{ color: '#6b7280' }}>
+          IVA débito (ventas) {fmt(ivaDebito)} − IVA crédito (compras) {fmt(ivaCredito)}
+        </p>
+      </div>
+
       {/* Totales */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
           <p className="text-xs" style={{ color: '#6b7280' }}>📤 Emitidas (a clientes)</p>
           <p className="text-2xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(totalEmitidas)}</p>
+          <p className="text-xs" style={{ color: '#6b7280' }}>IVA {fmt(ivaDebito)}</p>
         </div>
         <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
           <p className="text-xs" style={{ color: '#6b7280' }}>📥 Compra (pagadas)</p>
           <p className="text-2xl font-extrabold" style={{ color: '#e53935' }}>{fmt(totalCompras)}</p>
+          <p className="text-xs" style={{ color: '#6b7280' }}>IVA {fmt(ivaCredito)}</p>
         </div>
       </div>
 
