@@ -27,6 +27,7 @@ export default function VentasMesPage() {
   const [resumen, setResumen] = useState<ResumenMes | null>(null);
   const [filasExport, setFilasExport] = useState<FilaExport[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ventasPorMes, setVentasPorMes] = useState<number[]>(Array(12).fill(0));
 
   const hoy = new Date();
   const [mes, setMes] = useState(hoy.getMonth());
@@ -109,6 +110,34 @@ export default function VentasMesPage() {
     }
     load();
   }, [inicioMes, finMes]);
+
+  // Ventas de todo el año para el gráfico comparativo
+  useEffect(() => {
+    async function loadAnio() {
+      const inicioAnio = `${anio}-01-01`;
+      const finAnio = `${anio}-12-31`;
+      const [pedidosRes, detalleRes, eventosRes] = await Promise.all([
+        supabase.from('pedidos').select('fecha, total').eq('estado', 'pagado').gte('fecha', inicioAnio).lte('fecha', finAnio),
+        supabase.from('ventas_detalle').select('fecha, total').eq('estado', 'pagado').gte('fecha', inicioAnio).lte('fecha', finAnio),
+        supabase.from('ventas_evento').select('total, evento:eventos(fecha)').gte('eventos.fecha', inicioAnio).lte('eventos.fecha', finAnio),
+      ]);
+      const totales = Array(12).fill(0);
+      for (const p of (pedidosRes.data || []) as any[]) {
+        const m = parseInt(p.fecha.slice(5, 7)) - 1;
+        if (m >= 0 && m < 12) totales[m] += p.total;
+      }
+      for (const v of (detalleRes.data || []) as any[]) {
+        const m = parseInt(v.fecha.slice(5, 7)) - 1;
+        if (m >= 0 && m < 12) totales[m] += v.total;
+      }
+      for (const v of ((eventosRes.data || []) as any[]).filter((x) => x.evento)) {
+        const m = parseInt(v.evento.fecha.slice(5, 7)) - 1;
+        if (m >= 0 && m < 12) totales[m] += v.total;
+      }
+      setVentasPorMes(totales);
+    }
+    loadAnio();
+  }, [anio]);
 
   const totalGeneral = (resumen?.totalPedidos ?? 0) + (resumen?.totalDetalle ?? 0) + (resumen?.totalEventos ?? 0);
 
@@ -199,6 +228,45 @@ export default function VentasMesPage() {
           <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Solo ventas con estado <span style={{ color: '#4caf50' }}>Pagado</span></p>
         </div>
         <span className="text-5xl">📈</span>
+      </div>
+
+      {/* Comparación entre meses del año */}
+      <div className="rounded-xl border overflow-hidden mb-6" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+        <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>📊 Ventas por mes — {anio}</p>
+        </div>
+        <div className="p-4">
+          {(() => {
+            const maxVenta = Math.max(...ventasPorMes, 1);
+            const H = 120;
+            return (
+              <svg viewBox={`0 0 380 ${H + 34}`} width="100%" style={{ display: 'block' }}>
+                {ventasPorMes.map((v, i) => {
+                  const barH = Math.round((v / maxVenta) * H);
+                  const x = 8 + i * 31;
+                  const esSel = i === mes;
+                  const color = esSel ? '#e53935' : v > 0 ? '#4caf50' : '#2a2a2a';
+                  return (
+                    <g key={i} onClick={() => setMes(i)} style={{ cursor: 'pointer' }}>
+                      <rect x={x} y={H - Math.max(barH, 2)} width={24} height={Math.max(barH, 2)} rx={3} fill={color} />
+                      {v > 0 && (
+                        <text x={x + 12} y={H - Math.max(barH, 2) - 4} textAnchor="middle" fontSize={7} fill="#9ca3af"
+                          style={{ fontFamily: 'system-ui, sans-serif' }}>
+                          {v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : `${Math.round(v / 1000)}k`}
+                        </text>
+                      )}
+                      <text x={x + 12} y={H + 14} textAnchor="middle" fontSize={8} fontWeight={esSel ? 'bold' : 'normal'}
+                        fill={esSel ? '#e53935' : '#6b7280'} style={{ fontFamily: 'system-ui, sans-serif' }}>
+                        {MESES[i].slice(0, 3)}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+            );
+          })()}
+          <p className="text-xs text-center mt-1" style={{ color: '#6b7280' }}>Toca una barra para ver ese mes</p>
+        </div>
       </div>
 
       {/* Desglose */}

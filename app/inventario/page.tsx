@@ -23,6 +23,8 @@ export default function InventarioPage() {
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [observaciones, setObservaciones] = useState('');
 
+  const [ritmoVenta, setRitmoVenta] = useState<Record<string, number>>({});
+
   const fetchProductos = useCallback(async () => {
     try {
       const { data } = await supabase.from('productos').select('*').order('nombre');
@@ -30,7 +32,30 @@ export default function InventarioPage() {
     } catch {}
   }, []);
 
-  useEffect(() => { fetchProductos().finally(() => setLoading(false)); }, [fetchProductos]);
+  // Ritmo de venta: unidades vendidas por producto en los últimos 30 días
+  const fetchRitmo = useCallback(async () => {
+    try {
+      const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const [pedRes, detRes, eveRes] = await Promise.all([
+        supabase.from('detalle_pedido').select('producto_id, cantidad, pedido:pedidos(fecha)'),
+        supabase.from('items_venta_detalle').select('producto_id, cantidad, venta:ventas_detalle(fecha)'),
+        supabase.from('ventas_evento').select('producto_id, cantidad, evento:eventos(fecha)'),
+      ]);
+      const unidades: Record<string, number> = {};
+      for (const d of (pedRes.data || []) as any[]) {
+        if (d.pedido?.fecha >= hace30) unidades[d.producto_id] = (unidades[d.producto_id] || 0) + d.cantidad;
+      }
+      for (const i of (detRes.data || []) as any[]) {
+        if (i.venta?.fecha >= hace30) unidades[i.producto_id] = (unidades[i.producto_id] || 0) + i.cantidad;
+      }
+      for (const v of (eveRes.data || []) as any[]) {
+        if (v.evento?.fecha >= hace30) unidades[v.producto_id] = (unidades[v.producto_id] || 0) + v.cantidad;
+      }
+      setRitmoVenta(unidades);
+    } catch {}
+  }, []);
+
+  useEffect(() => { Promise.all([fetchProductos(), fetchRitmo()]).finally(() => setLoading(false)); }, [fetchProductos, fetchRitmo]);
 
   function abrirNuevo() {
     setEditando(null); setNombre(''); setSku(''); setFormato(''); setStock('');
@@ -78,6 +103,9 @@ export default function InventarioPage() {
       <div className="space-y-3">
         {productos.map((p) => {
           const color = p.stock === 0 ? '#e53935' : p.stock <= 10 ? '#ff9800' : '#4caf50';
+          const vendidas30 = ritmoVenta[p.id] || 0;
+          const diasAgote = p.stock > 0 && vendidas30 > 0 ? Math.round(p.stock / (vendidas30 / 30)) : null;
+          const colorAgote = diasAgote === null ? '#6b7280' : diasAgote <= 7 ? '#e53935' : diasAgote <= 14 ? '#ff9800' : '#4caf50';
           return (
             <div key={p.id} className="rounded-xl border p-4 cursor-pointer" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }} onClick={() => abrirEditar(p)}>
               <div className="flex justify-between items-start">
@@ -89,6 +117,14 @@ export default function InventarioPage() {
                     <p className="text-xs mt-1" style={{ color: '#ff9800' }}>
                       Vence: {new Date(p.fecha_vencimiento + 'T12:00:00').toLocaleDateString('es-CL')}
                     </p>
+                  )}
+                  {diasAgote !== null && (
+                    <p className="text-xs mt-1 font-semibold" style={{ color: colorAgote }}>
+                      ⏳ Se agota en ~{diasAgote} día{diasAgote !== 1 ? 's' : ''} <span style={{ color: '#6b7280', fontWeight: 'normal' }}>({vendidas30} uds vendidas en 30 días)</span>
+                    </p>
+                  )}
+                  {p.stock > 0 && vendidas30 === 0 && (
+                    <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Sin ventas en los últimos 30 días</p>
                   )}
                 </div>
                 <div className="text-right">
