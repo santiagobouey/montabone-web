@@ -416,7 +416,14 @@ export default function PedidosPage() {
     await fetchPedidos(inicioMes, finMes);
   }
 
-  const pedidosFiltrados = filtro === 'todos' ? pedidos : pedidos.filter((p) => p.estado === filtro);
+  // Orden por estado: pendiente → preparado → entregado → pagado
+  const ORDEN_ESTADO: Record<string, number> = { pendiente: 0, preparado: 1, entregado: 2, pagado: 3 };
+  const pedidosFiltrados = (filtro === 'todos' ? pedidos : pedidos.filter((p) => p.estado === filtro))
+    .slice()
+    .sort((a, b) => (ORDEN_ESTADO[a.estado] ?? 9) - (ORDEN_ESTADO[b.estado] ?? 9) || b.fecha.localeCompare(a.fecha));
+  const ventasDetalleOrdenadas = ventasDetalle
+    .slice()
+    .sort((a, b) => (ORDEN_ESTADO[a.estado] ?? 9) - (ORDEN_ESTADO[b.estado] ?? 9) || b.fecha.localeCompare(a.fecha));
 
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
@@ -495,7 +502,7 @@ export default function PedidosPage() {
 
           {verVentasDetalle && (
             <div className="border-t" style={{ borderColor: '#2a2a2a' }}>
-              {ventasDetalle.map((v, idx) => (
+              {ventasDetalleOrdenadas.map((v, idx) => (
                 <div key={v.id} className="px-4 py-3"
                   style={{ borderBottom: idx < ventasDetalle.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
                   <div className="flex justify-between items-start mb-1">
