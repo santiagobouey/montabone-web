@@ -21,6 +21,8 @@ interface Factura {
   created_at: string;
 }
 
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
 export default function FacturasPage() {
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +30,10 @@ export default function FacturasPage() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [facturaAEliminar, setFacturaAEliminar] = useState<Factura | null>(null);
+  const hoyDate = new Date();
+  const [mesFiltro, setMesFiltro] = useState(hoyDate.getMonth());
+  const [anioFiltro, setAnioFiltro] = useState(hoyDate.getFullYear());
+  const [showSelectorMes, setShowSelectorMes] = useState(false);
 
   // Form
   const [tipo, setTipo] = useState<Tipo>('compra');
@@ -137,14 +143,18 @@ export default function FacturasPage() {
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
-  const filtradas = facturas.filter((f) => filtro === 'todas' || f.tipo === filtro);
-  const totalEmitidas = facturas.filter((f) => f.tipo === 'emitida').reduce((s, f) => s + f.monto, 0);
-  const totalCompras = facturas.filter((f) => f.tipo === 'compra').reduce((s, f) => s + f.monto, 0);
+  // Facturas del mes seleccionado
+  const mesStr = `${anioFiltro}-${String(mesFiltro + 1).padStart(2, '0')}`;
+  const delMes = facturas.filter((f) => f.fecha.startsWith(mesStr));
+
+  const filtradas = delMes.filter((f) => filtro === 'todas' || f.tipo === filtro);
+  const totalEmitidas = delMes.filter((f) => f.tipo === 'emitida').reduce((s, f) => s + f.monto, 0);
+  const totalCompras = delMes.filter((f) => f.tipo === 'compra').reduce((s, f) => s + f.monto, 0);
 
   // IVA: si la factura no tiene iva guardado (registros antiguos), se estima desde el total
   const ivaDe = (f: Factura) => (f.iva > 0 ? f.iva : f.monto - Math.round(f.monto / 1.19));
-  const ivaDebito = facturas.filter((f) => f.tipo === 'emitida').reduce((s, f) => s + ivaDe(f), 0);
-  const ivaCredito = facturas.filter((f) => f.tipo === 'compra').reduce((s, f) => s + ivaDe(f), 0);
+  const ivaDebito = delMes.filter((f) => f.tipo === 'emitida').reduce((s, f) => s + ivaDe(f), 0);
+  const ivaCredito = delMes.filter((f) => f.tipo === 'compra').reduce((s, f) => s + ivaDe(f), 0);
   const ivaAPagar = ivaDebito - ivaCredito;
 
   const colorTipo = (t: Tipo) => (t === 'emitida' ? '#4caf50' : '#e53935');
@@ -152,16 +162,46 @@ export default function FacturasPage() {
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Facturas</h1>
           <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Sube y guarda tus facturas emitidas y de compra</p>
         </div>
       </div>
 
+      {/* Selector de mes */}
+      <button onClick={() => setShowSelectorMes(!showSelectorMes)}
+        className="w-full flex items-center justify-between rounded-xl border px-4 py-3 mb-4"
+        style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+        <p className="font-bold" style={{ color: '#f5f5f5' }}>📅 {MESES[mesFiltro]} {anioFiltro}</p>
+        <span style={{ color: '#6b7280' }}>{showSelectorMes ? '▲' : '▼'}</span>
+      </button>
+      {showSelectorMes && (
+        <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={() => setAnioFiltro(anioFiltro - 1)} className="w-8 h-8 rounded-lg border" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>‹</button>
+            <p className="font-bold" style={{ color: '#f5f5f5' }}>{anioFiltro}</p>
+            <button onClick={() => setAnioFiltro(anioFiltro + 1)} className="w-8 h-8 rounded-lg border" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>›</button>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {MESES.map((m, i) => (
+              <button key={m} onClick={() => { setMesFiltro(i); setShowSelectorMes(false); }}
+                className="py-2 rounded-lg text-xs font-semibold border"
+                style={{
+                  borderColor: mesFiltro === i ? '#e53935' : '#2a2a2a',
+                  backgroundColor: mesFiltro === i ? '#e5393520' : 'transparent',
+                  color: mesFiltro === i ? '#e53935' : '#9ca3af',
+                }}>
+                {m.slice(0, 3)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* IVA a pagar */}
       <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: ivaAPagar > 0 ? '#ff9800' : '#4caf50' }}>
-        <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>🏛️ IVA a pagar (F29)</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>🏛️ IVA a pagar (F29) — {MESES[mesFiltro]}</p>
         <p className="text-3xl font-extrabold" style={{ color: ivaAPagar > 0 ? '#ff9800' : '#4caf50' }}>
           {ivaAPagar > 0 ? fmt(ivaAPagar) : ivaAPagar < 0 ? `${fmt(Math.abs(ivaAPagar))} a favor` : fmt(0)}
         </p>
