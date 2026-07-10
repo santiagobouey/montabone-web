@@ -7,9 +7,12 @@ const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 
 type Tipo = 'emitida' | 'compra';
 
+type Categoria = 'productos' | 'materiales' | 'rebaja_iva';
+
 interface Factura {
   id: string;
   tipo: Tipo;
+  categoria: Categoria | null;
   monto: number;
   neto: number;
   iva: number;
@@ -20,6 +23,12 @@ interface Factura {
   archivo_nombre: string | null;
   created_at: string;
 }
+
+const CATEGORIAS: { key: Categoria; label: string; color: string }[] = [
+  { key: 'productos', label: '🥩 Productos', color: '#e53935' },
+  { key: 'materiales', label: '🛠️ Materiales de trabajo', color: '#2196f3' },
+  { key: 'rebaja_iva', label: '🧾 Rebaja de IVA', color: '#ff9800' },
+];
 
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -40,6 +49,7 @@ export default function FacturasPage() {
 
   // Form
   const [tipo, setTipo] = useState<Tipo>('compra');
+  const [categoria, setCategoria] = useState<Categoria>('productos');
   const [neto, setNeto] = useState('');
   const [contraparte, setContraparte] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -69,7 +79,7 @@ export default function FacturasPage() {
   useEffect(() => { Promise.all([fetchFacturas(), fetchListas()]).finally(() => setLoading(false)); }, [fetchFacturas, fetchListas]);
 
   function abrirNueva(t: Tipo) {
-    setTipo(t); setNeto(''); setContraparte(''); setDescripcion('');
+    setTipo(t); setCategoria('productos'); setNeto(''); setContraparte(''); setDescripcion('');
     setFecha(new Date().toISOString().split('T')[0]); setArchivo(null);
     setAnalizando(false); setAnalizado(false); setContraparteNueva(false);
     setShowModal(true);
@@ -137,7 +147,8 @@ export default function FacturasPage() {
         archivoNombre = archivo.name;
       }
       const { error } = await supabase.from('facturas').insert({
-        tipo, monto: totalNum, neto: netoNum, iva: ivaNum, contraparte: contraparte || null,
+        tipo, categoria: tipo === 'compra' ? categoria : null,
+        monto: totalNum, neto: netoNum, iva: ivaNum, contraparte: contraparte || null,
         descripcion: descripcion || null, fecha,
         archivo_url: archivoUrl, archivo_nombre: archivoNombre,
       });
@@ -254,6 +265,26 @@ export default function FacturasPage() {
         </div>
       </div>
 
+      {/* Compras por categoría */}
+      <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+        <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>📥 Compras por categoría — {MESES[mesFiltro]}</p>
+        </div>
+        <div className="grid grid-cols-3 divide-x" style={{ borderColor: '#2a2a2a' }}>
+          {CATEGORIAS.map((cat) => {
+            const deCat = delMes.filter((f) => f.tipo === 'compra' && (f.categoria || 'productos') === cat.key);
+            const total = deCat.reduce((s, f) => s + f.monto, 0);
+            return (
+              <div key={cat.key} className="p-3 text-center" style={{ borderColor: '#2a2a2a' }}>
+                <p className="text-xs mb-1" style={{ color: '#6b7280' }}>{cat.label}</p>
+                <p className="text-lg font-extrabold" style={{ color: cat.color }}>{fmt(total)}</p>
+                <p className="text-xs" style={{ color: '#6b7280' }}>{deCat.length} fact.</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Botón subir */}
       <button onClick={() => abrirNueva('compra')} className="w-full py-4 rounded-xl font-bold text-sm text-white mb-4" style={{ backgroundColor: '#e53935' }}>
         📎 Subir factura — la IA detecta todo automáticamente
@@ -286,10 +317,18 @@ export default function FacturasPage() {
             <div key={f.id} className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
               <div className="flex justify-between items-start">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: colorTipo(f.tipo) + '20', color: colorTipo(f.tipo) }}>
                       {labelTipo(f.tipo)}
                     </span>
+                    {f.tipo === 'compra' && (() => {
+                      const cat = CATEGORIAS.find((c) => c.key === (f.categoria || 'productos'));
+                      return cat ? (
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: cat.color + '20', color: cat.color }}>
+                          {cat.label}
+                        </span>
+                      ) : null;
+                    })()}
                     <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(f.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
                   </div>
                   <p className="font-bold" style={{ color: '#f5f5f5' }}>{fmt(f.monto)}</p>
@@ -355,6 +394,25 @@ export default function FacturasPage() {
                 </button>
               ))}
             </div>
+
+            {tipo === 'compra' && (
+              <>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Categoría de la compra</label>
+                <div className="flex gap-2 mb-4">
+                  {CATEGORIAS.map((cat) => (
+                    <button key={cat.key} onClick={() => setCategoria(cat.key)}
+                      className="flex-1 py-2 px-1 rounded-lg border text-xs font-semibold"
+                      style={{
+                        borderColor: categoria === cat.key ? cat.color : '#2a2a2a',
+                        backgroundColor: categoria === cat.key ? cat.color + '20' : 'transparent',
+                        color: categoria === cat.key ? cat.color : '#9ca3af',
+                      }}>
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Monto neto</label>
             <div className="flex items-center gap-2 mb-3">
