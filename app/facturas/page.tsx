@@ -320,67 +320,57 @@ export default function FacturasPage() {
         📎 Subir factura — la IA detecta todo automáticamente
       </button>
 
-      {/* Filtro */}
-      <div className="flex gap-2 mb-4">
-        {(['todas', 'emitida', 'compra'] as const).map((f) => (
-          <button key={f} onClick={() => setFiltro(f)}
-            className="flex-1 py-2 rounded-lg text-xs font-semibold border capitalize"
-            style={{
-              borderColor: filtro === f ? '#e53935' : '#2a2a2a',
-              backgroundColor: filtro === f ? '#e5393520' : 'transparent',
-              color: filtro === f ? '#e53935' : '#9ca3af',
-            }}>
-            {f === 'todas' ? 'Todas' : f === 'emitida' ? 'Emitidas' : 'Compra'}
-          </button>
-        ))}
-      </div>
-
-      {/* Lista */}
-      {filtradas.length === 0 ? (
+      {/* Listas por categoría */}
+      {delMes.length === 0 ? (
         <div className="text-center py-12" style={{ color: '#6b7280' }}>
           <p className="text-3xl mb-2">🧾</p>
-          <p>No hay facturas todavía</p>
+          <p>No hay facturas en {MESES[mesFiltro]}</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {filtradas.map((f) => (
-            <div key={f.id} className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
-              <div className="flex justify-between items-start">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: colorTipo(f.tipo) + '20', color: colorTipo(f.tipo) }}>
-                      {labelTipo(f.tipo)}
-                    </span>
-                    {f.tipo === 'compra' && (() => {
-                      const cat = CATEGORIAS.find((c) => c.key === (f.categoria || 'productos'));
-                      return cat ? (
-                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: cat.color + '20', color: cat.color }}>
-                          {cat.label}
-                        </span>
-                      ) : null;
-                    })()}
-                    <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(f.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
+        <div className="space-y-5">
+          {[
+            { titulo: '📤 Facturas Emitidas (a clientes)', color: '#4caf50', lista: delMes.filter((f) => f.tipo === 'emitida') },
+            ...CATEGORIAS.map((cat) => ({
+              titulo: `📥 ${cat.label}`,
+              color: cat.color,
+              lista: delMes.filter((f) => f.tipo === 'compra' && (f.categoria || 'productos') === cat.key),
+            })),
+          ].map((seccion) => seccion.lista.length > 0 && (
+            <div key={seccion.titulo}>
+              <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: seccion.color }}>
+                {seccion.titulo} ({seccion.lista.length})
+              </p>
+              <div className="space-y-3">
+                {seccion.lista.map((f) => (
+                  <div key={f.id} className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: seccion.color }}>
+                    <div className="flex justify-between items-start">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(f.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
+                        </div>
+                        <p className="font-bold" style={{ color: '#f5f5f5' }}>{fmt(f.monto)}</p>
+                        {(f.neto > 0 || f.iva > 0) && <p className="text-xs" style={{ color: '#6b7280' }}>Neto {fmt(f.neto)} + IVA {fmt(f.iva)}</p>}
+                        {f.contraparte && <p className="text-sm" style={{ color: '#9ca3af' }}>{f.contraparte}</p>}
+                        {f.descripcion && <p className="text-xs" style={{ color: '#6b7280' }}>{f.descripcion}</p>}
+                        {f.archivo_url && (
+                          <a href={f.archivo_url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs mt-2 px-2 py-1 rounded border"
+                            style={{ borderColor: '#2196f340', color: '#2196f3', backgroundColor: '#2196f310' }}>
+                            📎 Ver archivo
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button onClick={() => abrirEditar(f)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
+                          style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>✏️</button>
+                        <button onClick={() => setFacturaAEliminar(f)}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
+                          style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
+                      </div>
+                    </div>
                   </div>
-                  <p className="font-bold" style={{ color: '#f5f5f5' }}>{fmt(f.monto)}</p>
-                  {(f.neto > 0 || f.iva > 0) && <p className="text-xs" style={{ color: '#6b7280' }}>Neto {fmt(f.neto)} + IVA {fmt(f.iva)}</p>}
-                  {f.contraparte && <p className="text-sm" style={{ color: '#9ca3af' }}>{f.contraparte}</p>}
-                  {f.descripcion && <p className="text-xs" style={{ color: '#6b7280' }}>{f.descripcion}</p>}
-                  {f.archivo_url && (
-                    <a href={f.archivo_url} target="_blank" rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs mt-2 px-2 py-1 rounded border"
-                      style={{ borderColor: '#2196f340', color: '#2196f3', backgroundColor: '#2196f310' }}>
-                      📎 Ver archivo
-                    </a>
-                  )}
-                </div>
-                <div className="flex gap-2 flex-shrink-0">
-                  <button onClick={() => abrirEditar(f)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
-                    style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>✏️</button>
-                  <button onClick={() => setFacturaAEliminar(f)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
-                    style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
-                </div>
+                ))}
               </div>
             </div>
           ))}
