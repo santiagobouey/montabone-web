@@ -35,7 +35,6 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto'
 export default function FacturasPage() {
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filtro, setFiltro] = useState<'todas' | Tipo>('todas');
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [facturaAEliminar, setFacturaAEliminar] = useState<Factura | null>(null);
@@ -214,7 +213,6 @@ export default function FacturasPage() {
   const mesStr = `${anioFiltro}-${String(mesFiltro + 1).padStart(2, '0')}`;
   const delMes = facturas.filter((f) => f.fecha.startsWith(mesStr));
 
-  const filtradas = delMes.filter((f) => filtro === 'todas' || f.tipo === filtro);
   const totalEmitidas = delMes.filter((f) => f.tipo === 'emitida').reduce((s, f) => s + f.monto, 0);
   // Las de "rebaja de IVA" no cuentan como gasto de compra: solo aportan su IVA al crédito
   const totalCompras = delMes.filter((f) => f.tipo === 'compra' && (f.categoria || 'productos') !== 'rebaja_iva').reduce((s, f) => s + f.monto, 0);
@@ -226,7 +224,6 @@ export default function FacturasPage() {
   const ivaAPagar = ivaDebito - ivaCredito;
 
   const colorTipo = (t: Tipo) => (t === 'emitida' ? '#4caf50' : '#e53935');
-  const labelTipo = (t: Tipo) => (t === 'emitida' ? 'Emitida' : 'Compra');
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto">
