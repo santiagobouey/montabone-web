@@ -39,6 +39,7 @@ export default function FacturasPage() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [facturaAEliminar, setFacturaAEliminar] = useState<Factura | null>(null);
+  const [editandoFactura, setEditandoFactura] = useState<Factura | null>(null);
   const hoyDate = new Date();
   const [mesFiltro, setMesFiltro] = useState(hoyDate.getMonth());
   const [anioFiltro, setAnioFiltro] = useState(hoyDate.getFullYear());
@@ -79,9 +80,26 @@ export default function FacturasPage() {
   useEffect(() => { Promise.all([fetchFacturas(), fetchListas()]).finally(() => setLoading(false)); }, [fetchFacturas, fetchListas]);
 
   function abrirNueva(t: Tipo) {
+    setEditandoFactura(null);
     setTipo(t); setCategoria('productos'); setNeto(''); setContraparte(''); setDescripcion('');
     setFecha(new Date().toISOString().split('T')[0]); setArchivo(null);
     setAnalizando(false); setAnalizado(false); setContraparteNueva(false);
+    setShowModal(true);
+  }
+
+  function abrirEditar(f: Factura) {
+    setEditandoFactura(f);
+    setTipo(f.tipo);
+    setCategoria((f.categoria || 'productos') as Categoria);
+    setNeto(String(f.neto > 0 ? f.neto : Math.round(f.monto / 1.19)));
+    const lista = f.tipo === 'emitida' ? clientes : proveedores;
+    const enLista = f.contraparte && lista.some((x) => x.nombre === f.contraparte);
+    setContraparte(f.contraparte || '');
+    setContraparteNueva(!!f.contraparte && !enLista);
+    setDescripcion(f.descripcion || '');
+    setFecha(f.fecha);
+    setArchivo(null);
+    setAnalizando(false); setAnalizado(false);
     setShowModal(true);
   }
 
@@ -146,13 +164,21 @@ export default function FacturasPage() {
         archivoUrl = pub.publicUrl;
         archivoNombre = archivo.name;
       }
-      const { error } = await supabase.from('facturas').insert({
+      const payload: Record<string, unknown> = {
         tipo, categoria: tipo === 'compra' ? categoria : null,
         monto: totalNum, neto: netoNum, iva: ivaNum, contraparte: contraparte || null,
         descripcion: descripcion || null, fecha,
-        archivo_url: archivoUrl, archivo_nombre: archivoNombre,
-      });
-      if (error) throw error;
+      };
+      if (archivoUrl) { payload.archivo_url = archivoUrl; payload.archivo_nombre = archivoNombre; }
+
+      if (editandoFactura) {
+        const { error } = await supabase.from('facturas').update(payload).eq('id', editandoFactura.id);
+        if (error) throw error;
+      } else {
+        payload.archivo_url = archivoUrl; payload.archivo_nombre = archivoNombre;
+        const { error } = await supabase.from('facturas').insert(payload);
+        if (error) throw error;
+      }
 
       // Guardar proveedor nuevo para reutilizarlo la próxima vez
       if (tipo === 'compra' && contraparte && !proveedores.some((p) => p.nombre.toLowerCase() === contraparte.toLowerCase())) {
@@ -190,7 +216,8 @@ export default function FacturasPage() {
 
   const filtradas = delMes.filter((f) => filtro === 'todas' || f.tipo === filtro);
   const totalEmitidas = delMes.filter((f) => f.tipo === 'emitida').reduce((s, f) => s + f.monto, 0);
-  const totalCompras = delMes.filter((f) => f.tipo === 'compra').reduce((s, f) => s + f.monto, 0);
+  // Las de "rebaja de IVA" no cuentan como gasto de compra: solo aportan su IVA al crédito
+  const totalCompras = delMes.filter((f) => f.tipo === 'compra' && (f.categoria || 'productos') !== 'rebaja_iva').reduce((s, f) => s + f.monto, 0);
 
   // IVA: si la factura no tiene iva guardado (registros antiguos), se estima desde el total
   const ivaDe = (f: Factura) => (f.iva > 0 ? f.iva : f.monto - Math.round(f.monto / 1.19));
@@ -273,12 +300,15 @@ export default function FacturasPage() {
         <div className="grid grid-cols-3 divide-x" style={{ borderColor: '#2a2a2a' }}>
           {CATEGORIAS.map((cat) => {
             const deCat = delMes.filter((f) => f.tipo === 'compra' && (f.categoria || 'productos') === cat.key);
-            const total = deCat.reduce((s, f) => s + f.monto, 0);
+            const esRebaja = cat.key === 'rebaja_iva';
+            const total = esRebaja
+              ? deCat.reduce((s, f) => s + ivaDe(f), 0)
+              : deCat.reduce((s, f) => s + f.monto, 0);
             return (
               <div key={cat.key} className="p-3 text-center" style={{ borderColor: '#2a2a2a' }}>
                 <p className="text-xs mb-1" style={{ color: '#6b7280' }}>{cat.label}</p>
                 <p className="text-lg font-extrabold" style={{ color: cat.color }}>{fmt(total)}</p>
-                <p className="text-xs" style={{ color: '#6b7280' }}>{deCat.length} fact.</p>
+                <p className="text-xs" style={{ color: '#6b7280' }}>{esRebaja ? 'IVA rebajado' : 'gasto'} · {deCat.length} fact.</p>
               </div>
             );
           })}
@@ -343,9 +373,14 @@ export default function FacturasPage() {
                     </a>
                   )}
                 </div>
-                <button onClick={() => setFacturaAEliminar(f)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center border text-base flex-shrink-0"
-                  style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button onClick={() => abrirEditar(f)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
+                    style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>✏️</button>
+                  <button onClick={() => setFacturaAEliminar(f)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
+                    style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
+                </div>
               </div>
             </div>
           ))}
@@ -357,7 +392,7 @@ export default function FacturasPage() {
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
           <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[90vh]" style={{ backgroundColor: '#141414' }}>
             <div className="flex justify-between items-center mb-4">
-              <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>📎 Subir Factura</h2>
+              <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>{editandoFactura ? '✏️ Editar Factura' : '📎 Subir Factura'}</h2>
               <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
@@ -479,7 +514,7 @@ export default function FacturasPage() {
             <button onClick={guardar} disabled={saving || netoNum <= 0 || analizando}
               className="w-full py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40"
               style={{ backgroundColor: colorTipo(tipo) }}>
-              {saving ? 'Subiendo...' : 'Guardar factura'}
+              {saving ? 'Guardando...' : editandoFactura ? 'Guardar cambios' : 'Guardar factura'}
             </button>
           </div>
         </div>
