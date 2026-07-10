@@ -34,6 +34,9 @@ export default function FacturasPage() {
   const [mesFiltro, setMesFiltro] = useState(hoyDate.getMonth());
   const [anioFiltro, setAnioFiltro] = useState(hoyDate.getFullYear());
   const [showSelectorMes, setShowSelectorMes] = useState(false);
+  const [clientes, setClientes] = useState<{ id: string; nombre: string }[]>([]);
+  const [proveedores, setProveedores] = useState<{ id: string; nombre: string }[]>([]);
+  const [contraparteNueva, setContraparteNueva] = useState(false);
 
   // Form
   const [tipo, setTipo] = useState<Tipo>('compra');
@@ -54,12 +57,21 @@ export default function FacturasPage() {
     setFacturas((data || []) as Factura[]);
   }, []);
 
-  useEffect(() => { fetchFacturas().finally(() => setLoading(false)); }, [fetchFacturas]);
+  const fetchListas = useCallback(async () => {
+    const [cliRes, provRes] = await Promise.all([
+      supabase.from('clientes').select('id, nombre').order('nombre'),
+      supabase.from('proveedores').select('id, nombre').order('nombre'),
+    ]);
+    setClientes(cliRes.data || []);
+    setProveedores(provRes.data || []);
+  }, []);
+
+  useEffect(() => { Promise.all([fetchFacturas(), fetchListas()]).finally(() => setLoading(false)); }, [fetchFacturas, fetchListas]);
 
   function abrirNueva(t: Tipo) {
     setTipo(t); setNeto(''); setContraparte(''); setDescripcion('');
     setFecha(new Date().toISOString().split('T')[0]); setArchivo(null);
-    setAnalizando(false); setAnalizado(false);
+    setAnalizando(false); setAnalizado(false); setContraparteNueva(false);
     setShowModal(true);
   }
 
@@ -84,10 +96,22 @@ export default function FacturasPage() {
       if (!res.ok) throw new Error('No se pudo analizar');
       const datos = await res.json();
 
-      if (datos.tipo === 'emitida' || datos.tipo === 'compra') setTipo(datos.tipo);
+      const tipoDetectado: Tipo = datos.tipo === 'emitida' ? 'emitida' : 'compra';
+      setTipo(tipoDetectado);
       if (datos.neto) setNeto(String(datos.neto));
       else if (datos.total) setNeto(String(Math.round(datos.total / 1.19)));
-      if (datos.contraparte) setContraparte(datos.contraparte);
+      if (datos.contraparte) {
+        const nombre = String(datos.contraparte);
+        const lista = tipoDetectado === 'emitida' ? clientes : proveedores;
+        const match = lista.find((x) => x.nombre.toLowerCase() === nombre.toLowerCase() || nombre.toLowerCase().includes(x.nombre.toLowerCase()) || x.nombre.toLowerCase().includes(nombre.toLowerCase()));
+        if (match) {
+          setContraparte(match.nombre);
+          setContraparteNueva(false);
+        } else {
+          setContraparte(nombre);
+          setContraparteNueva(true);
+        }
+      }
       if (datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha)) setFecha(datos.fecha);
       if (datos.numero) setDescripcion(`Factura N° ${datos.numero}`);
       setAnalizado(true);
@@ -118,8 +142,14 @@ export default function FacturasPage() {
         archivo_url: archivoUrl, archivo_nombre: archivoNombre,
       });
       if (error) throw error;
+
+      // Guardar proveedor nuevo para reutilizarlo la próxima vez
+      if (tipo === 'compra' && contraparte && !proveedores.some((p) => p.nombre.toLowerCase() === contraparte.toLowerCase())) {
+        await supabase.from('proveedores').insert({ nombre: contraparte });
+      }
+
       setShowModal(false);
-      await fetchFacturas();
+      await Promise.all([fetchFacturas(), fetchListas()]);
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
@@ -348,9 +378,37 @@ export default function FacturasPage() {
               </div>
             </div>
 
-            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>{tipo === 'emitida' ? 'Cliente' : 'Proveedor'} (opcional)</label>
-            <input value={contraparte} onChange={(e) => setContraparte(e.target.value)} placeholder={tipo === 'emitida' ? 'Nombre del cliente' : 'Nombre del proveedor'}
-              className="w-full rounded-lg px-3 py-2 text-sm border mb-3" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>{tipo === 'emitida' ? 'Cliente' : 'Proveedor'}</label>
+            {!contraparteNueva ? (
+              <select
+                value={(tipo === 'emitida' ? clientes : proveedores).some((x) => x.nombre === contraparte) ? contraparte : ''}
+                onChange={(e) => {
+                  if (e.target.value === '__nuevo__') { setContraparteNueva(true); setContraparte(''); }
+                  else setContraparte(e.target.value);
+                }}
+                className="w-full rounded-lg px-3 py-2 text-sm border mb-3"
+                style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: contraparte ? '#f5f5f5' : '#6b7280' }}>
+                <option value="">— Seleccionar {tipo === 'emitida' ? 'cliente' : 'proveedor'} —</option>
+                {(tipo === 'emitida' ? clientes : proveedores).map((x) => (
+                  <option key={x.id} value={x.nombre}>{x.nombre}</option>
+                ))}
+                <option value="__nuevo__">➕ {tipo === 'emitida' ? 'Otro (escribir)' : 'Nuevo proveedor...'}</option>
+              </select>
+            ) : (
+              <div className="flex gap-2 mb-3">
+                <input value={contraparte} onChange={(e) => setContraparte(e.target.value)} autoFocus
+                  placeholder={tipo === 'emitida' ? 'Nombre del cliente' : 'Nombre del nuevo proveedor'}
+                  className="flex-1 min-w-0 rounded-lg px-3 py-2 text-sm border"
+                  style={{ backgroundColor: '#1c1c1c', borderColor: tipo === 'compra' ? '#4caf50' : '#2a2a2a', color: '#f5f5f5' }} />
+                <button onClick={() => { setContraparteNueva(false); setContraparte(''); }}
+                  className="px-3 rounded-lg border text-xs flex-shrink-0" style={{ borderColor: '#2a2a2a', color: '#6b7280' }}>
+                  Lista
+                </button>
+              </div>
+            )}
+            {contraparteNueva && tipo === 'compra' && contraparte && (
+              <p className="text-xs mb-3 -mt-2" style={{ color: '#4caf50' }}>✓ Se guardará como proveedor nuevo para la próxima vez</p>
+            )}
 
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha</label>
             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)}
