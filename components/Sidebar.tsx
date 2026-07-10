@@ -8,6 +8,7 @@ const nav = [
   { href: '/', label: 'Inicio', icon: '🏠' },
   { href: '/pedidos', label: 'Pedidos', icon: '📦' },
   { href: '/clientes', label: 'Clientes', icon: '👥' },
+  { href: '/datos-clientes', label: 'Datos Clientes', icon: '📇' },
   { href: '/prospectos', label: 'Prospectos', icon: '🎯' },
   { href: '/ventas-mes', label: 'Venta Mensual', icon: '📈' },
   { href: '/ventas-eventos', label: 'Eventos', icon: '🎪' },
