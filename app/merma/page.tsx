@@ -28,6 +28,7 @@ interface Merma {
   fecha: string;
   observaciones: string | null;
   producto: { nombre: string; precio: number } | null;
+  cliente: { nombre: string } | null;
 }
 
 const MOTIVOS: { key: Motivo; label: string; color: string }[] = [
@@ -48,20 +49,24 @@ export default function MermaPage() {
   const [motivo, setMotivo] = useState<Motivo>('devolucion');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [observaciones, setObservaciones] = useState('');
+  const [clienteId, setClienteId] = useState('');
+  const [clientes, setClientes] = useState<{ id: string; nombre: string }[]>([]);
 
   const fetchDatos = useCallback(async () => {
-    const [merRes, prodRes] = await Promise.all([
-      supabase.from('mermas').select('*, producto:productos(nombre, precio)').order('fecha', { ascending: false }),
+    const [merRes, prodRes, cliRes] = await Promise.all([
+      supabase.from('mermas').select('*, producto:productos(nombre, precio), cliente:clientes(nombre)').order('fecha', { ascending: false }),
       supabase.from('productos').select('id, nombre, formato, stock, precio').order('nombre'),
+      supabase.from('clientes').select('id, nombre').order('nombre'),
     ]);
     setMermas((merRes.data || []) as Merma[]);
     setProductos((prodRes.data || []) as ProductoOpt[]);
+    setClientes(cliRes.data || []);
   }, []);
 
   useEffect(() => { fetchDatos().finally(() => setLoading(false)); }, [fetchDatos]);
 
   function abrirNueva() {
-    setItems([]); setMotivo('devolucion');
+    setItems([]); setMotivo('devolucion'); setClienteId('');
     setFecha(new Date().toISOString().split('T')[0]); setObservaciones('');
     setShowModal(true);
   }
@@ -79,6 +84,7 @@ export default function MermaPage() {
       const { error } = await supabase.from('mermas').insert(
         items.map((i) => ({
           producto_id: i.producto.id, cantidad: i.cantidad, motivo, fecha,
+          cliente_id: clienteId || null,
           observaciones: observaciones || null,
         }))
       );
@@ -170,6 +176,7 @@ export default function MermaPage() {
                       <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
                     </div>
                     <p className="font-bold" style={{ color: '#f5f5f5' }}>{m.producto?.nombre ?? 'Producto eliminado'} — {m.cantidad} paquete{m.cantidad !== 1 ? 's' : ''}</p>
+                    {m.cliente && <p className="text-sm" style={{ color: '#9ca3af' }}>👥 {m.cliente.nombre}</p>}
                     <p className="text-xs" style={{ color: '#6b7280' }}>Valor venta: {fmt(valorDe(m))}</p>
                     {m.observaciones && <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{m.observaciones}</p>}
                   </div>
@@ -206,6 +213,14 @@ export default function MermaPage() {
                 </button>
               ))}
             </div>
+
+            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cliente</label>
+            <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+              style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: clienteId ? '#f5f5f5' : '#6b7280' }}>
+              <option value="">— Seleccionar cliente (opcional) —</option>
+              {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
 
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha</label>
             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)}
