@@ -15,6 +15,11 @@ interface ProductoOpt {
   precio: number;
 }
 
+interface ItemMerma {
+  producto: ProductoOpt;
+  cantidad: number;
+}
+
 interface Merma {
   id: string;
   producto_id: string | null;
@@ -39,8 +44,7 @@ export default function MermaPage() {
   const [mermaAEliminar, setMermaAEliminar] = useState<Merma | null>(null);
 
   // Form
-  const [productoId, setProductoId] = useState('');
-  const [cantidad, setCantidad] = useState('');
+  const [items, setItems] = useState<ItemMerma[]>([]);
   const [motivo, setMotivo] = useState<Motivo>('devolucion');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [observaciones, setObservaciones] = useState('');
@@ -57,27 +61,33 @@ export default function MermaPage() {
   useEffect(() => { fetchDatos().finally(() => setLoading(false)); }, [fetchDatos]);
 
   function abrirNueva() {
-    setProductoId(''); setCantidad(''); setMotivo('devolucion');
+    setItems([]); setMotivo('devolucion');
     setFecha(new Date().toISOString().split('T')[0]); setObservaciones('');
     setShowModal(true);
   }
 
+  function toggleProducto(p: ProductoOpt) {
+    const exists = items.find((i) => i.producto.id === p.id);
+    if (exists) setItems((prev) => prev.filter((i) => i.producto.id !== p.id));
+    else setItems((prev) => [...prev, { producto: p, cantidad: 1 }]);
+  }
+
   async function guardar() {
-    const cant = cantidad ? parseInt(cantidad) : 0;
-    if (!productoId || cant <= 0) return;
+    if (items.length === 0) return;
     setSaving(true);
     try {
-      const { error } = await supabase.from('mermas').insert({
-        producto_id: productoId, cantidad: cant, motivo, fecha,
-        observaciones: observaciones || null,
-      });
+      const { error } = await supabase.from('mermas').insert(
+        items.map((i) => ({
+          producto_id: i.producto.id, cantidad: i.cantidad, motivo, fecha,
+          observaciones: observaciones || null,
+        }))
+      );
       if (error) throw error;
 
       // Descontar del stock
-      const prod = productos.find((p) => p.id === productoId);
-      if (prod) {
-        await supabase.from('productos').update({ stock: Math.max(0, prod.stock - cant) }).eq('id', productoId);
-      }
+      await Promise.all(items.map((i) =>
+        supabase.from('productos').update({ stock: Math.max(0, i.producto.stock - i.cantidad) }).eq('id', i.producto.id)
+      ));
 
       setShowModal(false);
       await fetchDatos();
@@ -110,8 +120,8 @@ export default function MermaPage() {
   const valorDe = (m: Merma) => (m.producto?.precio ?? 0) * m.cantidad;
   const totalDevolucion = mermas.filter((m) => m.motivo === 'devolucion');
   const totalDegustacion = mermas.filter((m) => m.motivo === 'degustacion');
-
-  const prodSel = productos.find((p) => p.id === productoId);
+  const totalUnidades = items.reduce((s, i) => s + i.cantidad, 0);
+  const colorMotivo = MOTIVOS.find((x) => x.key === motivo)!.color;
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto">
@@ -182,7 +192,7 @@ export default function MermaPage() {
               <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
-            <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Motivo</label>
+            {/* Toggle motivo (como el toggle de tipo de venta) */}
             <div className="flex gap-2 mb-4">
               {MOTIVOS.map((mot) => (
                 <button key={mot.key} onClick={() => setMotivo(mot.key)}
@@ -197,39 +207,58 @@ export default function MermaPage() {
               ))}
             </div>
 
-            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Producto</label>
-            <select value={productoId} onChange={(e) => setProductoId(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm border mb-3"
-              style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: productoId ? '#f5f5f5' : '#6b7280' }}>
-              <option value="">— Seleccionar producto —</option>
-              {productos.map((p) => (
-                <option key={p.id} value={p.id}>{p.nombre} ({p.formato}) — stock: {p.stock}</option>
-              ))}
-            </select>
-
-            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cantidad de paquetes</label>
-            <input type="number" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="ej: 2" min={1}
-              className="w-full rounded-lg px-3 py-2 text-sm border mb-1"
-              style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
-            {prodSel && cantidad && parseInt(cantidad) > prodSel.stock && (
-              <p className="text-xs mb-2" style={{ color: '#ff9800' }}>⚠️ Stock actual: {prodSel.stock} — el stock quedará en 0</p>
-            )}
-            <div className="mb-3" />
-
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha</label>
             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm border mb-3"
+              className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
               style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
 
+            <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Productos</label>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {productos.map((p) => {
+                const sel = items.find((i) => i.producto.id === p.id);
+                return (
+                  <button key={p.id} onClick={() => toggleProducto(p)}
+                    className="px-3 py-1.5 rounded-lg border text-xs font-medium"
+                    style={{ backgroundColor: sel ? colorMotivo + '20' : '#1c1c1c', borderColor: sel ? colorMotivo : '#2a2a2a', color: sel ? colorMotivo : '#9ca3af' }}>
+                    {p.nombre} ({p.stock})
+                  </button>
+                );
+              })}
+            </div>
+
+            {items.map((item) => (
+              <div key={item.producto.id} className="mb-3 p-3 rounded-lg border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a' }}>
+                <div className="flex justify-between items-center mb-2">
+                  <p className="font-semibold text-sm" style={{ color: '#f5f5f5' }}>{item.producto.nombre}</p>
+                  <button onClick={() => setItems((prev) => prev.filter((i) => i.producto.id !== item.producto.id))}
+                    className="w-7 h-7 rounded flex items-center justify-center"
+                    style={{ backgroundColor: '#e53935' + '20', color: '#e53935' }}>🗑</button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))}
+                      className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
+                    <span className="w-8 text-center font-extrabold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
+                    <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))}
+                      className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                    <span className="text-xs ml-1" style={{ color: '#6b7280' }}>paquete{item.cantidad !== 1 ? 's' : ''}</span>
+                  </div>
+                  {item.cantidad > item.producto.stock && (
+                    <span className="text-xs" style={{ color: '#ff9800' }}>⚠️ stock: {item.producto.stock}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Observaciones (opcional)</label>
-            <input value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="ej: cliente devolvió por vencimiento, muestra en local X..."
+            <input value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="ej: devolución por vencimiento, muestra en local X..."
               className="w-full rounded-lg px-3 py-2 text-sm border mb-4"
               style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
 
-            <button onClick={guardar} disabled={saving || !productoId || !cantidad || parseInt(cantidad) <= 0}
+            <button onClick={guardar} disabled={saving || items.length === 0}
               className="w-full py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40"
-              style={{ backgroundColor: MOTIVOS.find((x) => x.key === motivo)!.color }}>
-              {saving ? 'Guardando...' : 'Registrar y descontar del stock'}
+              style={{ backgroundColor: colorMotivo }}>
+              {saving ? 'Guardando...' : `Registrar ${totalUnidades > 0 ? `${totalUnidades} paquete${totalUnidades !== 1 ? 's' : ''}` : 'merma'} y descontar stock`}
             </button>
           </div>
         </div>
