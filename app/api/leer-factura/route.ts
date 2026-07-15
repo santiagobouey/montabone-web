@@ -42,10 +42,10 @@ Responde SOLO con un JSON válido, sin texto adicional ni markdown:
 Si algún dato no se puede leer, usa null. Si solo aparece el total, calcula neto = total / 1.19 redondeado e iva = total - neto.`;
 
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`,
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent',
       {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': API_KEY },
         body: JSON.stringify({
           contents: [
             {
