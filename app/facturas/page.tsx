@@ -43,9 +43,10 @@ export default function FacturasPage() {
   const [mesFiltro, setMesFiltro] = useState(hoyDate.getMonth());
   const [anioFiltro, setAnioFiltro] = useState(hoyDate.getFullYear());
   const [showSelectorMes, setShowSelectorMes] = useState(false);
-  const [clientes, setClientes] = useState<{ id: string; nombre: string }[]>([]);
-  const [proveedores, setProveedores] = useState<{ id: string; nombre: string }[]>([]);
+  const [clientes, setClientes] = useState<{ id: string; nombre: string; rut: string | null; razon_social: string | null; giro: string | null }[]>([]);
+  const [proveedores, setProveedores] = useState<{ id: string; nombre: string; rut: string | null; razon_social: string | null; giro: string | null; direccion: string | null }[]>([]);
   const [contraparteNueva, setContraparteNueva] = useState(false);
+  const [datosContraparte, setDatosContraparte] = useState<{ rut: string | null; razon_social: string | null; giro: string | null; direccion: string | null } | null>(null);
 
   // Form
   const [tipo, setTipo] = useState<Tipo>('compra');
@@ -69,8 +70,8 @@ export default function FacturasPage() {
 
   const fetchListas = useCallback(async () => {
     const [cliRes, provRes] = await Promise.all([
-      supabase.from('clientes').select('id, nombre').order('nombre'),
-      supabase.from('proveedores').select('id, nombre').order('nombre'),
+      supabase.from('clientes').select('id, nombre, rut, razon_social, giro').order('nombre'),
+      supabase.from('proveedores').select('id, nombre, rut, razon_social, giro, direccion').order('nombre'),
     ]);
     setClientes(cliRes.data || []);
     setProveedores(provRes.data || []);
@@ -83,6 +84,7 @@ export default function FacturasPage() {
     setTipo(t); setCategoria('productos'); setNeto(''); setContraparte(''); setDescripcion('');
     setFecha(new Date().toISOString().split('T')[0]); setArchivo(null);
     setAnalizando(false); setAnalizado(false); setContraparteNueva(false);
+    setDatosContraparte(null);
     setShowModal(true);
   }
 
@@ -99,6 +101,7 @@ export default function FacturasPage() {
     setFecha(f.fecha);
     setArchivo(null);
     setAnalizando(false); setAnalizado(false);
+    setDatosContraparte(null);
     setShowModal(true);
   }
 
@@ -141,6 +144,12 @@ export default function FacturasPage() {
       }
       if (datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha)) setFecha(datos.fecha);
       if (datos.numero) setDescripcion(`Factura N° ${datos.numero}`);
+      setDatosContraparte({
+        rut: datos.contraparte_rut || null,
+        razon_social: datos.contraparte_razon_social || null,
+        giro: datos.contraparte_giro || null,
+        direccion: datos.contraparte_direccion || null,
+      });
       setAnalizado(true);
     } catch {
       // Si falla el análisis, el usuario llena los datos a mano
@@ -179,9 +188,39 @@ export default function FacturasPage() {
         if (error) throw error;
       }
 
-      // Guardar proveedor nuevo para reutilizarlo la próxima vez
-      if (tipo === 'compra' && contraparte && !proveedores.some((p) => p.nombre.toLowerCase() === contraparte.toLowerCase())) {
-        await supabase.from('proveedores').insert({ nombre: contraparte });
+      // Sincronizar datos de la contraparte con clientes / proveedores
+      if (contraparte) {
+        if (tipo === 'compra') {
+          const provExistente = proveedores.find((p) => p.nombre.toLowerCase() === contraparte.toLowerCase());
+          if (!provExistente) {
+            // Proveedor nuevo: se guarda con todos los datos leídos de la factura
+            await supabase.from('proveedores').insert({
+              nombre: contraparte,
+              rut: datosContraparte?.rut || null,
+              razon_social: datosContraparte?.razon_social || null,
+              giro: datosContraparte?.giro || null,
+              direccion: datosContraparte?.direccion || null,
+            });
+          } else if (datosContraparte) {
+            // Completar datos que le falten al proveedor (sin pisar los existentes)
+            const cambios: Record<string, string> = {};
+            if (!provExistente.rut && datosContraparte.rut) cambios.rut = datosContraparte.rut;
+            if (!provExistente.razon_social && datosContraparte.razon_social) cambios.razon_social = datosContraparte.razon_social;
+            if (!provExistente.giro && datosContraparte.giro) cambios.giro = datosContraparte.giro;
+            if (!provExistente.direccion && datosContraparte.direccion) cambios.direccion = datosContraparte.direccion;
+            if (Object.keys(cambios).length > 0) await supabase.from('proveedores').update(cambios).eq('id', provExistente.id);
+          }
+        } else if (tipo === 'emitida' && datosContraparte) {
+          // Completar la ficha del cliente (Datos Clientes) con lo leído de la factura
+          const cliExistente = clientes.find((c) => c.nombre.toLowerCase() === contraparte.toLowerCase());
+          if (cliExistente) {
+            const cambios: Record<string, string> = {};
+            if (!cliExistente.rut && datosContraparte.rut) cambios.rut = datosContraparte.rut;
+            if (!cliExistente.razon_social && datosContraparte.razon_social) cambios.razon_social = datosContraparte.razon_social;
+            if (!cliExistente.giro && datosContraparte.giro) cambios.giro = datosContraparte.giro;
+            if (Object.keys(cambios).length > 0) await supabase.from('clientes').update(cambios).eq('id', cliExistente.id);
+          }
+        }
       }
 
       setShowModal(false);

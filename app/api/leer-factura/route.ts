@@ -36,6 +36,10 @@ Responde SOLO con un JSON válido, sin texto adicional ni markdown:
   "iva": <IVA en pesos, número entero>,
   "total": <total en pesos, número entero>,
   "contraparte": "<nombre de la otra empresa (el cliente si es emitida, el proveedor si es compra)>",
+  "contraparte_rut": "<RUT de la contraparte, formato XX.XXX.XXX-X, o null>",
+  "contraparte_razon_social": "<razón social completa de la contraparte, o null>",
+  "contraparte_giro": "<giro de la contraparte, o null>",
+  "contraparte_direccion": "<dirección de la contraparte, o null>",
   "fecha": "<fecha de emisión en formato YYYY-MM-DD>",
   "numero": "<número de folio de la factura, o null>"
 }
