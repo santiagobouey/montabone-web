@@ -25,8 +25,8 @@ interface Factura {
 }
 
 const CATEGORIAS: { key: Categoria; label: string; color: string }[] = [
-  { key: 'productos', label: '🥩 Productos', color: '#e53935' },
-  { key: 'materiales', label: '🛠️ Materiales de trabajo', color: '#2196f3' },
+  { key: 'productos', label: '🥩 Producto', color: '#e53935' },
+  { key: 'materiales', label: '💸 Gastos', color: '#2196f3' },
   { key: 'rebaja_iva', label: '🧾 Rebaja de IVA', color: '#ff9800' },
 ];
 
