@@ -2,23 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 60;
 
-const API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const API_KEY = process.env.GEMINI_API_KEY || '';
 
 export async function POST(req: NextRequest) {
   try {
     if (!API_KEY) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY no configurada' }, { status: 500 });
+      return NextResponse.json({ error: 'GEMINI_API_KEY no configurada' }, { status: 500 });
     }
 
     const { base64, mediaType } = await req.json();
     if (!base64 || !mediaType) {
       return NextResponse.json({ error: 'Falta el archivo' }, { status: 400 });
     }
-
-    const esPdf = mediaType === 'application/pdf';
-    const contenidoArchivo = esPdf
-      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
-      : { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } };
 
     const prompt = `Analiza esta factura chilena y extrae los datos en JSON.
 
@@ -46,24 +41,27 @@ Responde SOLO con un JSON válido, sin texto adicional ni markdown:
 
 Si algún dato no se puede leer, usa null. Si solo aparece el total, calcula neto = total / 1.19 redondeado e iva = total - neto.`;
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: [contenidoArchivo, { type: 'text', text: prompt }],
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { inline_data: { mime_type: mediaType, data: base64 } },
+                { text: prompt },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0,
+            responseMimeType: 'application/json',
           },
-        ],
-      }),
-    });
+        }),
+      }
+    );
 
     if (!res.ok) {
       const err = await res.text();
@@ -71,7 +69,7 @@ Si algún dato no se puede leer, usa null. Si solo aparece el total, calcula net
     }
 
     const data = await res.json();
-    const texto = (data.content?.[0]?.text || '').trim();
+    const texto = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
 
     // Extraer el JSON de la respuesta
     const match = texto.match(/\{[\s\S]*\}/);
