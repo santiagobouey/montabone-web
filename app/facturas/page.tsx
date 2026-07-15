@@ -16,6 +16,7 @@ interface Factura {
   monto: number;
   neto: number;
   iva: number;
+  folio: number | null;
   contraparte: string | null;
   descripcion: string | null;
   fecha: string;
@@ -51,6 +52,7 @@ export default function FacturasPage() {
   // Form
   const [tipo, setTipo] = useState<Tipo>('compra');
   const [categoria, setCategoria] = useState<Categoria>('productos');
+  const [folio, setFolio] = useState('');
   const [neto, setNeto] = useState('');
   const [contraparte, setContraparte] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -81,7 +83,7 @@ export default function FacturasPage() {
 
   function abrirNueva(t: Tipo) {
     setEditandoFactura(null);
-    setTipo(t); setCategoria('productos'); setNeto(''); setContraparte(''); setDescripcion('');
+    setTipo(t); setCategoria('productos'); setFolio(''); setNeto(''); setContraparte(''); setDescripcion('');
     setFecha(new Date().toISOString().split('T')[0]); setArchivo(null);
     setAnalizando(false); setAnalizado(false); setContraparteNueva(false);
     setDatosContraparte(null);
@@ -92,6 +94,7 @@ export default function FacturasPage() {
     setEditandoFactura(f);
     setTipo(f.tipo);
     setCategoria((f.categoria || 'productos') as Categoria);
+    setFolio(f.folio ? String(f.folio) : '');
     setNeto(String(f.neto > 0 ? f.neto : Math.round(f.monto / 1.19)));
     const lista = f.tipo === 'emitida' ? clientes : proveedores;
     const enLista = f.contraparte && lista.some((x) => x.nombre === f.contraparte);
@@ -143,7 +146,11 @@ export default function FacturasPage() {
         }
       }
       if (datos.fecha && /^\d{4}-\d{2}-\d{2}$/.test(datos.fecha)) setFecha(datos.fecha);
-      if (datos.numero) setDescripcion(`Factura N° ${datos.numero}`);
+      if (datos.numero) {
+        setDescripcion(`Factura N° ${datos.numero}`);
+        const num = parseInt(String(datos.numero).replace(/\D/g, ''));
+        if (!isNaN(num)) setFolio(String(num));
+      }
       setDatosContraparte({
         rut: datos.contraparte_rut || null,
         razon_social: datos.contraparte_razon_social || null,
@@ -175,6 +182,7 @@ export default function FacturasPage() {
       const payload: Record<string, unknown> = {
         tipo, categoria: tipo === 'compra' ? categoria : null,
         monto: totalNum, neto: netoNum, iva: ivaNum, contraparte: contraparte || null,
+        folio: folio ? parseInt(folio) : null,
         descripcion: descripcion || null, fecha,
       };
       if (archivoUrl) { payload.archivo_url = archivoUrl; payload.archivo_nombre = archivoNombre; }
@@ -256,6 +264,18 @@ export default function FacturasPage() {
   // Las de "rebaja de IVA" no cuentan como gasto de compra: solo aportan su IVA al crédito
   const totalCompras = delMes.filter((f) => f.tipo === 'compra' && (f.categoria || 'productos') !== 'rebaja_iva').reduce((s, f) => s + f.monto, 0);
 
+  // Correlativo de facturas emitidas (todas, no solo del mes)
+  const foliosEmitidas = facturas.filter((f) => f.tipo === 'emitida' && f.folio).map((f) => f.folio as number);
+  const ultimoFolio = foliosEmitidas.length > 0 ? Math.max(...foliosEmitidas) : null;
+  const primerFolio = foliosEmitidas.length > 0 ? Math.min(...foliosEmitidas) : null;
+  const foliosFaltantes: number[] = [];
+  if (ultimoFolio && primerFolio) {
+    const set = new Set(foliosEmitidas);
+    for (let n = primerFolio; n <= ultimoFolio; n++) {
+      if (!set.has(n)) foliosFaltantes.push(n);
+    }
+  }
+
   // IVA: si la factura no tiene iva guardado (registros antiguos), se estima desde el total
   const ivaDe = (f: Factura) => (f.iva > 0 ? f.iva : f.monto - Math.round(f.monto / 1.19));
   const ivaDebito = delMes.filter((f) => f.tipo === 'emitida').reduce((s, f) => s + ivaDe(f), 0);
@@ -302,6 +322,27 @@ export default function FacturasPage() {
           </div>
         </div>
       )}
+
+      {/* Correlativo facturas emitidas */}
+      <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: foliosFaltantes.length > 0 ? '#ff9800' : '#4caf50' }}>
+        <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6b7280' }}>📑 Correlativo de facturas emitidas</p>
+        {ultimoFolio ? (
+          <>
+            <p className="text-sm" style={{ color: '#f5f5f5' }}>
+              Vas en la factura <span className="text-2xl font-extrabold" style={{ color: '#4caf50' }}>N° {ultimoFolio}</span>
+            </p>
+            {foliosFaltantes.length > 0 ? (
+              <p className="text-xs mt-2" style={{ color: '#ff9800' }}>
+                ⚠️ Falta{foliosFaltantes.length !== 1 ? 'n' : ''} por subir: {foliosFaltantes.slice(0, 20).map((n) => `N° ${n}`).join(', ')}{foliosFaltantes.length > 20 ? ` y ${foliosFaltantes.length - 20} más` : ''}
+              </p>
+            ) : (
+              <p className="text-xs mt-2" style={{ color: '#4caf50' }}>✓ Correlativo completo — no falta ninguna entre la N° {primerFolio} y la N° {ultimoFolio}</p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm" style={{ color: '#6b7280' }}>Aún no hay facturas emitidas con número de folio</p>
+        )}
+      </div>
 
       {/* IVA a pagar */}
       <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: ivaAPagar > 0 ? '#ff9800' : '#4caf50' }}>
@@ -382,6 +423,9 @@ export default function FacturasPage() {
                     <div className="flex justify-between items-start">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          {f.folio && (
+                            <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#2a2a2a', color: '#f5f5f5' }}>N° {f.folio}</span>
+                          )}
                           <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(f.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
                         </div>
                         <p className="font-bold" style={{ color: '#f5f5f5' }}>{fmt(f.monto)}</p>
@@ -474,6 +518,10 @@ export default function FacturasPage() {
                 </div>
               </>
             )}
+
+            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>N° de factura (folio)</label>
+            <input type="number" value={folio} onChange={(e) => setFolio(e.target.value)} placeholder="ej: 57"
+              className="w-full rounded-lg px-3 py-2 text-sm border mb-3" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
 
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Monto neto</label>
             <div className="flex items-center gap-2 mb-3">
