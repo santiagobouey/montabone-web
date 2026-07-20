@@ -492,10 +492,12 @@ export default function ProspectosPage() {
             <p className="text-xs mb-4" style={{ color: '#6b7280' }}>Busca negocios reales de una comuna y agrégalos como prospectos</p>
 
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Comuna</label>
-            <input value={zonaBusqueda} onChange={(e) => setZonaBusqueda(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') buscarConIA(); }}
-              placeholder="ej: Huechuraba, Recoleta, Independencia..."
-              className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            <select value={zonaBusqueda} onChange={(e) => setZonaBusqueda(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+              style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: zonaBusqueda ? '#f5f5f5' : '#6b7280' }}>
+              <option value="">— Seleccionar comuna —</option>
+              {COMUNAS_SANTIAGO.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
 
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Tipo de negocio</label>
             <div className="flex flex-wrap gap-2 mb-4">
