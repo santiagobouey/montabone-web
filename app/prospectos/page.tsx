@@ -49,6 +49,17 @@ export default function ProspectosPage() {
   const [observaciones, setObservaciones] = useState('');
   const [muestraEntregada, setMuestraEntregada] = useState(false);
 
+  // Buscador IA
+  interface ResultadoIA { nombre: string; direccion: string; telefono: string | null; tipo: string; nota: string | null; }
+  const [showBuscador, setShowBuscador] = useState(false);
+  const [buscando, setBuscando] = useState(false);
+  const [agregandoIA, setAgregandoIA] = useState(false);
+  const [zonaBusqueda, setZonaBusqueda] = useState('');
+  const [tipoBusqueda, setTipoBusqueda] = useState('todos');
+  const [resultadosIA, setResultadosIA] = useState<ResultadoIA[]>([]);
+  const [seleccionadosIA, setSeleccionadosIA] = useState<Set<number>>(new Set());
+  const [errorBusqueda, setErrorBusqueda] = useState('');
+
   const fetchProspectos = useCallback(async () => {
     try {
       const { data } = await supabase.from('prospectos').select('*').order('created_at', { ascending: false });
@@ -57,6 +68,58 @@ export default function ProspectosPage() {
   }, []);
 
   useEffect(() => { fetchProspectos().finally(() => setLoading(false)); }, [fetchProspectos]);
+
+  async function buscarConIA() {
+    if (!zonaBusqueda.trim()) return;
+    setBuscando(true); setErrorBusqueda(''); setResultadosIA([]); setSeleccionadosIA(new Set());
+    try {
+      const res = await fetch('/api/buscar-prospectos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zona: zonaBusqueda.trim(), tipo: tipoBusqueda }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error en la búsqueda');
+      // Excluir los que ya existen como prospectos
+      const existentes = new Set(prospectos.map((p) => (p.nombre_local || '').toLowerCase()));
+      const nuevos = (data.resultados as ResultadoIA[]).filter((r) => !existentes.has(r.nombre.toLowerCase()));
+      setResultadosIA(nuevos);
+      // Preseleccionar todos
+      setSeleccionadosIA(new Set(nuevos.map((_, i) => i)));
+      if (nuevos.length === 0) setErrorBusqueda('No se encontraron locales nuevos en esa comuna (o ya los tienes como prospectos).');
+    } catch (e: unknown) {
+      setErrorBusqueda(e instanceof Error ? e.message : 'Error en la búsqueda');
+    }
+    setBuscando(false);
+  }
+
+  async function agregarSeleccionadosIA() {
+    const elegidos = resultadosIA.filter((_, i) => seleccionadosIA.has(i));
+    if (elegidos.length === 0) return;
+    setAgregandoIA(true);
+    try {
+      const { error } = await supabase.from('prospectos').insert(
+        elegidos.map((r) => ({
+          nombre: r.nombre,
+          nombre_local: r.nombre,
+          nombre_contacto: null,
+          telefono: r.telefono || 'Sin teléfono',
+          direccion: r.direccion,
+          tipo: TIPOS.includes(r.tipo as TipoCliente) ? r.tipo : 'otro',
+          estado: 'potencial',
+          observaciones: r.nota ? `${r.nota} · Encontrado con IA` : 'Encontrado con IA',
+          muestra_entregada: false,
+        }))
+      );
+      if (error) throw new Error(error.message);
+      setShowBuscador(false);
+      await fetchProspectos();
+      alert(`✅ Se agregaron ${elegidos.length} prospecto${elegidos.length !== 1 ? 's' : ''} nuevos.`);
+    } catch (e: unknown) {
+      alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
+    }
+    setAgregandoIA(false);
+  }
 
   function cerrarModal() {
     setShowModal(false);
@@ -204,7 +267,10 @@ export default function ProspectosPage() {
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Prospectos</h1>
           <p className="text-sm" style={{ color: '#6b7280' }}>{prospectos.length} prospectos</p>
         </div>
-        <button onClick={abrirNuevo} className="px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>+ Nuevo</button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowBuscador(true)} className="px-3 py-2 rounded-lg font-semibold text-sm border" style={{ borderColor: '#9c27b0', color: '#9c27b0' }}>🔍 Buscar con IA</button>
+          <button onClick={abrirNuevo} className="px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>+ Nuevo</button>
+        </div>
       </div>
 
       {/* Alerta de seguimiento */}
@@ -410,6 +476,110 @@ export default function ProspectosPage() {
                   <button onClick={handleEliminar} className="flex-1 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#e53935' }}>Sí, eliminar</button>
                 </div>
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal buscador IA */}
+      {showBuscador && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[90vh]" style={{ backgroundColor: '#141414' }}>
+            <div className="flex justify-between items-center mb-1">
+              <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>🔍 Buscar Prospectos con IA</h2>
+              <button onClick={() => setShowBuscador(false)} style={{ color: '#6b7280' }}>✕</button>
+            </div>
+            <p className="text-xs mb-4" style={{ color: '#6b7280' }}>Busca negocios reales de una comuna y agrégalos como prospectos</p>
+
+            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Comuna</label>
+            <input value={zonaBusqueda} onChange={(e) => setZonaBusqueda(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') buscarConIA(); }}
+              placeholder="ej: Huechuraba, Recoleta, Independencia..."
+              className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Tipo de negocio</label>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {[
+                { key: 'todos', label: 'Todos' },
+                { key: 'carniceria', label: '🥩 Carnicerías' },
+                { key: 'botilleria', label: '🍷 Botillerías' },
+                { key: 'restaurante', label: '🍽️ Restaurantes' },
+                { key: 'supermercado', label: '🛒 Supermercados' },
+                { key: 'otro', label: '🏪 Almacenes' },
+              ].map((t) => (
+                <button key={t.key} onClick={() => setTipoBusqueda(t.key)}
+                  className="px-3 py-1.5 rounded-full border text-xs font-medium"
+                  style={{
+                    borderColor: tipoBusqueda === t.key ? '#9c27b0' : '#2a2a2a',
+                    backgroundColor: tipoBusqueda === t.key ? '#9c27b020' : 'transparent',
+                    color: tipoBusqueda === t.key ? '#9c27b0' : '#9ca3af',
+                  }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <button onClick={buscarConIA} disabled={buscando || !zonaBusqueda.trim()}
+              className="w-full py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40 mb-4"
+              style={{ backgroundColor: '#9c27b0' }}>
+              {buscando ? 'Buscando negocios...' : 'Buscar'}
+            </button>
+
+            {buscando && (
+              <div className="flex items-center justify-center gap-2 py-4">
+                <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm" style={{ color: '#9c27b0' }}>Consultando el mapa de negocios...</p>
+              </div>
+            )}
+
+            {errorBusqueda && <p className="text-xs p-3 rounded-lg mb-3" style={{ backgroundColor: '#ff980015', color: '#ff9800' }}>{errorBusqueda}</p>}
+
+            {resultadosIA.length > 0 && (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold uppercase" style={{ color: '#6b7280' }}>
+                    {resultadosIA.length} encontrados · {seleccionadosIA.size} seleccionados
+                  </p>
+                  <button onClick={() => setSeleccionadosIA(seleccionadosIA.size === resultadosIA.length ? new Set() : new Set(resultadosIA.map((_, i) => i)))}
+                    className="text-xs px-2 py-1 rounded border" style={{ borderColor: '#2a2a2a', color: '#9ca3af' }}>
+                    {seleccionadosIA.size === resultadosIA.length ? 'Ninguno' : 'Todos'}
+                  </button>
+                </div>
+                <div className="space-y-2 mb-4 max-h-64 overflow-y-auto">
+                  {resultadosIA.map((r, i) => {
+                    const sel = seleccionadosIA.has(i);
+                    return (
+                      <button key={i} onClick={() => {
+                        setSeleccionadosIA((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(i)) next.delete(i); else next.add(i);
+                          return next;
+                        });
+                      }}
+                        className="w-full flex items-start gap-3 p-3 rounded-lg border text-left"
+                        style={{ borderColor: sel ? '#9c27b0' : '#2a2a2a', backgroundColor: sel ? '#9c27b010' : '#1c1c1c' }}>
+                        <div className="w-5 h-5 rounded flex items-center justify-center border-2 flex-shrink-0 mt-0.5"
+                          style={{ borderColor: sel ? '#9c27b0' : '#4b5563', backgroundColor: sel ? '#9c27b0' : 'transparent' }}>
+                          {sel && <span className="text-white text-xs font-bold">✓</span>}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{r.nombre}</p>
+                          <p className="text-xs" style={{ color: '#6b7280' }}>
+                            {TIPO_LABELS[r.tipo as TipoCliente] ?? 'Otro'} · {r.direccion}
+                            {r.telefono ? ` · 📞 ${r.telefono}` : ''}
+                          </p>
+                          {r.nota && <p className="text-xs" style={{ color: '#6b7280' }}>{r.nota}</p>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button onClick={agregarSeleccionadosIA} disabled={agregandoIA || seleccionadosIA.size === 0}
+                  className="w-full py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40"
+                  style={{ backgroundColor: '#e53935' }}>
+                  {agregandoIA ? 'Agregando...' : `Agregar ${seleccionadosIA.size} como prospectos`}
+                </button>
+              </>
             )}
           </div>
         </div>
