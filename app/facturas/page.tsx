@@ -17,6 +17,7 @@ interface Factura {
   neto: number;
   iva: number;
   folio: number | null;
+  pagada: boolean;
   contraparte: string | null;
   descripcion: string | null;
   fecha: string;
@@ -53,6 +54,7 @@ export default function FacturasPage() {
   const [tipo, setTipo] = useState<Tipo>('compra');
   const [categoria, setCategoria] = useState<Categoria>('productos');
   const [folio, setFolio] = useState('');
+  const [pagada, setPagada] = useState(false);
   const [neto, setNeto] = useState('');
   const [contraparte, setContraparte] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -83,7 +85,7 @@ export default function FacturasPage() {
 
   function abrirNueva(t: Tipo) {
     setEditandoFactura(null);
-    setTipo(t); setCategoria('productos'); setFolio(''); setNeto(''); setContraparte(''); setDescripcion('');
+    setTipo(t); setCategoria('productos'); setFolio(''); setPagada(false); setNeto(''); setContraparte(''); setDescripcion('');
     setFecha(new Date().toISOString().split('T')[0]); setArchivo(null);
     setAnalizando(false); setAnalizado(false); setContraparteNueva(false);
     setDatosContraparte(null);
@@ -95,6 +97,7 @@ export default function FacturasPage() {
     setTipo(f.tipo);
     setCategoria((f.categoria || 'productos') as Categoria);
     setFolio(f.folio ? String(f.folio) : '');
+    setPagada(f.pagada || false);
     setNeto(String(f.neto > 0 ? f.neto : Math.round(f.monto / 1.19)));
     const lista = f.tipo === 'emitida' ? clientes : proveedores;
     const enLista = f.contraparte && lista.some((x) => x.nombre === f.contraparte);
@@ -183,6 +186,7 @@ export default function FacturasPage() {
         tipo, categoria: tipo === 'compra' ? categoria : null,
         monto: totalNum, neto: netoNum, iva: ivaNum, contraparte: contraparte || null,
         folio: folio ? parseInt(folio) : null,
+        pagada: tipo === 'emitida' ? pagada : false,
         descripcion: descripcion || null, fecha,
       };
       if (archivoUrl) { payload.archivo_url = archivoUrl; payload.archivo_nombre = archivoNombre; }
@@ -237,6 +241,11 @@ export default function FacturasPage() {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
     setSaving(false);
+  }
+
+  async function togglePagada(f: Factura) {
+    setFacturas((prev) => prev.map((x) => x.id === f.id ? { ...x, pagada: !f.pagada } : x));
+    await supabase.from('facturas').update({ pagada: !f.pagada }).eq('id', f.id);
   }
 
   async function eliminar() {
@@ -361,6 +370,10 @@ export default function FacturasPage() {
           <p className="text-xs" style={{ color: '#6b7280' }}>📤 Emitidas (a clientes)</p>
           <p className="text-2xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(totalEmitidas)}</p>
           <p className="text-xs" style={{ color: '#6b7280' }}>IVA {fmt(ivaDebito)}</p>
+          {(() => {
+            const porPagar = delMes.filter((f) => f.tipo === 'emitida' && !f.pagada).reduce((s, f) => s + f.monto, 0);
+            return porPagar > 0 ? <p className="text-xs font-semibold" style={{ color: '#ff9800' }}>⏳ Por cobrar: {fmt(porPagar)}</p> : null;
+          })()}
         </div>
         <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
           <p className="text-xs" style={{ color: '#6b7280' }}>📥 Compra (pagadas)</p>
@@ -425,6 +438,13 @@ export default function FacturasPage() {
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           {f.folio && (
                             <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: '#2a2a2a', color: '#f5f5f5' }}>N° {f.folio}</span>
+                          )}
+                          {f.tipo === 'emitida' && (
+                            <button onClick={() => togglePagada(f)}
+                              className="text-xs font-bold px-2 py-0.5 rounded-full"
+                              style={{ backgroundColor: f.pagada ? '#4caf5020' : '#ff980020', color: f.pagada ? '#4caf50' : '#ff9800' }}>
+                              {f.pagada ? '✓ Pagada' : '⏳ Por pagar'}
+                            </button>
                           )}
                           <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(f.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
                         </div>
@@ -517,6 +537,23 @@ export default function FacturasPage() {
                   ))}
                 </div>
               </>
+            )}
+
+            {tipo === 'emitida' && (
+              <button onClick={() => setPagada(!pagada)}
+                className="w-full flex items-center gap-3 p-3 rounded-lg border mb-4 text-left"
+                style={{ borderColor: pagada ? '#4caf50' : '#ff9800', backgroundColor: pagada ? '#4caf5010' : '#ff980010' }}>
+                <div className="w-5 h-5 rounded flex items-center justify-center border-2 flex-shrink-0"
+                  style={{ borderColor: pagada ? '#4caf50' : '#ff9800', backgroundColor: pagada ? '#4caf50' : 'transparent' }}>
+                  {pagada && <span className="text-white text-xs font-bold">✓</span>}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: pagada ? '#4caf50' : '#ff9800' }}>
+                    {pagada ? '✓ Ya fue pagada' : 'Pendiente de pago'}
+                  </p>
+                  <p className="text-xs" style={{ color: '#6b7280' }}>Toca para cambiar</p>
+                </div>
+              </button>
             )}
 
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>N° de factura (folio)</label>
