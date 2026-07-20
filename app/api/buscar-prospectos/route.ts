@@ -9,21 +9,30 @@ interface OSMElement {
 }
 
 // Mapeo de tipos de la app → filtros de OpenStreetMap
+// Solo negocios de barrio: carnicerías, botillerías y minimarkets/almacenes
 const FILTROS: Record<string, string[]> = {
   carniceria: ['node["shop"="butcher"]', 'way["shop"="butcher"]'],
   botilleria: ['node["shop"="alcohol"]', 'way["shop"="alcohol"]'],
-  restaurante: ['node["amenity"~"restaurant|fast_food"]', 'way["amenity"~"restaurant|fast_food"]'],
-  supermercado: ['node["shop"="supermarket"]', 'way["shop"="supermarket"]'],
   otro: ['node["shop"~"convenience|deli|greengrocer"]', 'way["shop"~"convenience|deli|greengrocer"]'],
 };
 
+// Cadenas grandes que no sirven como prospectos
+const CADENAS_EXCLUIDAS = [
+  'oxxo', 'ok market', 'okmarket', 'spid', 'unimarc', 'lider', 'líder', 'jumbo',
+  'santa isabel', 'tottus', 'acuenta', 'a cuenta', 'ekono', 'alvi', 'mayorista 10',
+  'central mayorista', 'castaño', 'pronto', 'copec', 'shell', 'petrobras', 'aramco',
+  'upa!', 'select', 'cruz verde', 'salcobrand', 'ahumada',
+];
+
+function esCadena(nombre: string): boolean {
+  const n = nombre.toLowerCase();
+  return CADENAS_EXCLUIDAS.some((c) => n === c || n.startsWith(c + ' ') || n.includes(` ${c}`) || n.includes(c));
+}
+
 function tipoDesdeOSM(tags: Record<string, string>): string {
   const shop = tags.shop || '';
-  const amenity = tags.amenity || '';
   if (shop === 'butcher') return 'carniceria';
   if (shop === 'alcohol') return 'botilleria';
-  if (shop === 'supermarket') return 'supermercado';
-  if (amenity === 'restaurant' || amenity === 'fast_food') return 'restaurante';
   return 'otro';
 }
 
@@ -62,7 +71,7 @@ out center tags 80;
 
     const vistos = new Set<string>();
     const resultados = elementos
-      .filter((e) => e.tags?.name)
+      .filter((e) => e.tags?.name && !esCadena(e.tags.name))
       .map((e) => {
         const t = e.tags!;
         const calle = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');

@@ -505,9 +505,7 @@ export default function ProspectosPage() {
                 { key: 'todos', label: 'Todos' },
                 { key: 'carniceria', label: '🥩 Carnicerías' },
                 { key: 'botilleria', label: '🍷 Botillerías' },
-                { key: 'restaurante', label: '🍽️ Restaurantes' },
-                { key: 'supermercado', label: '🛒 Supermercados' },
-                { key: 'otro', label: '🏪 Almacenes' },
+                { key: 'otro', label: '🏪 Minimarkets' },
               ].map((t) => (
                 <button key={t.key} onClick={() => setTipoBusqueda(t.key)}
                   className="px-3 py-1.5 rounded-full border text-xs font-medium"
