@@ -495,7 +495,7 @@ export default function ProspectosPage() {
             <select value={zonaBusqueda} onChange={(e) => setZonaBusqueda(e.target.value)}
               className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
               style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: zonaBusqueda ? '#f5f5f5' : '#6b7280' }}>
-              <option value="">— Seleccionar comuna —</option>
+              <option value="">Seleccionar comuna...</option>
               {COMUNAS_SANTIAGO.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
 
