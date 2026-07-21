@@ -5,7 +5,8 @@ import { supabase } from '@/lib/supabase';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 
-type Motivo = 'devolucion' | 'degustacion';
+type Motivo = 'devolucion' | 'degustacion' | 'muestra';
+type Destino = 'local' | 'influencer';
 
 interface ProductoOpt {
   id: string;
@@ -29,11 +30,13 @@ interface Merma {
   observaciones: string | null;
   producto: { nombre: string; precio: number } | null;
   cliente: { nombre: string } | null;
+  influencer: { nombre: string } | null;
 }
 
 const MOTIVOS: { key: Motivo; label: string; color: string }[] = [
   { key: 'devolucion', label: '↩️ Devolución', color: '#e53935' },
   { key: 'degustacion', label: '🍴 Degustación', color: '#ff9800' },
+  { key: 'muestra', label: '🎁 Muestra', color: '#9c27b0' },
 ];
 
 export default function MermaPage() {
@@ -50,23 +53,28 @@ export default function MermaPage() {
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [observaciones, setObservaciones] = useState('');
   const [clienteId, setClienteId] = useState('');
+  const [influencerId, setInfluencerId] = useState('');
+  const [destino, setDestino] = useState<Destino>('local');
   const [clientes, setClientes] = useState<{ id: string; nombre: string }[]>([]);
+  const [influencers, setInfluencers] = useState<{ id: string; nombre: string }[]>([]);
 
   const fetchDatos = useCallback(async () => {
-    const [merRes, prodRes, cliRes] = await Promise.all([
-      supabase.from('mermas').select('*, producto:productos(nombre, precio), cliente:clientes(nombre)').order('fecha', { ascending: false }),
+    const [merRes, prodRes, cliRes, infRes] = await Promise.all([
+      supabase.from('mermas').select('*, producto:productos(nombre, precio), cliente:clientes(nombre), influencer:influencers(nombre)').order('fecha', { ascending: false }),
       supabase.from('productos').select('id, nombre, formato, stock, precio').order('nombre'),
       supabase.from('clientes').select('id, nombre').order('nombre'),
+      supabase.from('influencers').select('id, nombre').order('nombre'),
     ]);
     setMermas((merRes.data || []) as Merma[]);
     setProductos((prodRes.data || []) as ProductoOpt[]);
     setClientes(cliRes.data || []);
+    setInfluencers(infRes.data || []);
   }, []);
 
   useEffect(() => { fetchDatos().finally(() => setLoading(false)); }, [fetchDatos]);
 
   function abrirNueva() {
-    setItems([]); setMotivo('devolucion'); setClienteId('');
+    setItems([]); setMotivo('devolucion'); setClienteId(''); setInfluencerId(''); setDestino('local');
     setFecha(new Date().toISOString().split('T')[0]); setObservaciones('');
     setShowModal(true);
   }
@@ -81,10 +89,15 @@ export default function MermaPage() {
     if (items.length === 0) return;
     setSaving(true);
     try {
+      // Para muestras se elige local (cliente) o influencer; para el resto solo cliente
+      const esMuestraInfluencer = motivo === 'muestra' && destino === 'influencer';
+      const cliente_id = esMuestraInfluencer ? null : (clienteId || null);
+      const influencer_id = esMuestraInfluencer ? (influencerId || null) : null;
+
       const { error } = await supabase.from('mermas').insert(
         items.map((i) => ({
           producto_id: i.producto.id, cantidad: i.cantidad, motivo, fecha,
-          cliente_id: clienteId || null,
+          cliente_id, influencer_id,
           observaciones: observaciones || null,
         }))
       );
@@ -126,6 +139,7 @@ export default function MermaPage() {
   const valorDe = (m: Merma) => (m.producto?.precio ?? 0) * m.cantidad;
   const totalDevolucion = mermas.filter((m) => m.motivo === 'devolucion');
   const totalDegustacion = mermas.filter((m) => m.motivo === 'degustacion');
+  const totalMuestra = mermas.filter((m) => m.motivo === 'muestra');
   const totalUnidades = items.reduce((s, i) => s + i.cantidad, 0);
   const colorMotivo = MOTIVOS.find((x) => x.key === motivo)!.color;
 
@@ -134,7 +148,7 @@ export default function MermaPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Merma</h1>
-          <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Devoluciones y degustaciones — se descuentan del stock</p>
+          <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Devoluciones, degustaciones y muestras — se descuentan del stock</p>
         </div>
         <button onClick={abrirNueva} className="px-4 py-2 rounded-lg font-bold text-sm text-white flex-shrink-0" style={{ backgroundColor: '#e53935' }}>
           + Registrar
@@ -142,15 +156,16 @@ export default function MermaPage() {
       </div>
 
       {/* Totales */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-6">
         {[
           { label: '↩️ Devoluciones', lista: totalDevolucion, color: '#e53935' },
           { label: '🍴 Degustaciones', lista: totalDegustacion, color: '#ff9800' },
+          { label: '🎁 Muestras', lista: totalMuestra, color: '#9c27b0' },
         ].map((t) => (
-          <div key={t.label} className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: t.color }}>
+          <div key={t.label} className="rounded-xl border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: t.color }}>
             <p className="text-xs" style={{ color: '#6b7280' }}>{t.label}</p>
             <p className="text-2xl font-extrabold" style={{ color: t.color }}>{t.lista.reduce((s, m) => s + m.cantidad, 0)} <span className="text-sm">uds</span></p>
-            <p className="text-xs" style={{ color: '#6b7280' }}>{fmt(t.lista.reduce((s, m) => s + valorDe(m), 0))} en valor venta</p>
+            <p className="text-xs" style={{ color: '#6b7280' }}>{fmt(t.lista.reduce((s, m) => s + valorDe(m), 0))}</p>
           </div>
         ))}
       </div>
@@ -176,7 +191,8 @@ export default function MermaPage() {
                       <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
                     </div>
                     <p className="font-bold" style={{ color: '#f5f5f5' }}>{m.producto?.nombre ?? 'Producto eliminado'} — {m.cantidad} paquete{m.cantidad !== 1 ? 's' : ''}</p>
-                    {m.cliente && <p className="text-sm" style={{ color: '#9ca3af' }}>👥 {m.cliente.nombre}</p>}
+                    {m.influencer && <p className="text-sm" style={{ color: '#9ca3af' }}>📣 {m.influencer.nombre}</p>}
+                    {m.cliente && <p className="text-sm" style={{ color: '#9ca3af' }}>🏪 {m.cliente.nombre}</p>}
                     <p className="text-xs" style={{ color: '#6b7280' }}>Valor venta: {fmt(valorDe(m))}</p>
                     {m.observaciones && <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{m.observaciones}</p>}
                   </div>
@@ -203,7 +219,7 @@ export default function MermaPage() {
             <div className="flex gap-2 mb-4">
               {MOTIVOS.map((mot) => (
                 <button key={mot.key} onClick={() => setMotivo(mot.key)}
-                  className="flex-1 py-2 rounded-lg border text-xs font-semibold"
+                  className="flex-1 py-2 px-1 rounded-lg border text-xs font-semibold"
                   style={{
                     borderColor: motivo === mot.key ? mot.color : '#2a2a2a',
                     backgroundColor: motivo === mot.key ? mot.color + '20' : 'transparent',
@@ -214,13 +230,56 @@ export default function MermaPage() {
               ))}
             </div>
 
-            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cliente</label>
-            <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
-              style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: clienteId ? '#f5f5f5' : '#6b7280' }}>
-              <option value="">— Seleccionar cliente (opcional) —</option>
-              {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-            </select>
+            {motivo === 'muestra' ? (
+              <>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>¿Para quién?</label>
+                <div className="flex gap-2 mb-3">
+                  {([
+                    { key: 'local' as Destino, label: '🏪 Local' },
+                    { key: 'influencer' as Destino, label: '📣 Influencer' },
+                  ]).map((d) => (
+                    <button key={d.key} onClick={() => setDestino(d.key)}
+                      className="flex-1 py-2 rounded-lg border text-xs font-semibold"
+                      style={{
+                        borderColor: destino === d.key ? '#9c27b0' : '#2a2a2a',
+                        backgroundColor: destino === d.key ? '#9c27b020' : 'transparent',
+                        color: destino === d.key ? '#9c27b0' : '#9ca3af',
+                      }}>
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+
+                {destino === 'local' ? (
+                  <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}
+                    className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+                    style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: clienteId ? '#f5f5f5' : '#6b7280' }}>
+                    <option value="">— Seleccionar local —</option>
+                    {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                ) : (
+                  <select value={influencerId} onChange={(e) => setInfluencerId(e.target.value)}
+                    className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+                    style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: influencerId ? '#f5f5f5' : '#6b7280' }}>
+                    <option value="">— Seleccionar influencer —</option>
+                    {influencers.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}
+                  </select>
+                )}
+                {destino === 'influencer' && influencers.length === 0 && (
+                  <p className="text-xs mb-3" style={{ color: '#ff9800' }}>No hay influencers cargados. Agrégalos en la sección Pendientes.</p>
+                )}
+              </>
+            ) : (
+              <>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cliente</label>
+                <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+                  style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: clienteId ? '#f5f5f5' : '#6b7280' }}>
+                  <option value="">— Seleccionar cliente (opcional) —</option>
+                  {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+              </>
+            )}
 
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha</label>
             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)}
