@@ -14,6 +14,8 @@ const ESTADO_COLORS: Record<string, string> = {
 };
 
 const ESTADOS: EstadoPedido[] = ['pendiente', 'preparado', 'entregado', 'pagado'];
+// Estados en los que el pedido ya salió de bodega → el stock está descontado
+const CONSUMEN_STOCK: string[] = ['entregado', 'pagado'];
 const PRECIOS_PRESET = [2940, 3300, 3760, 3990, 4000, 4990, 4995, 5990];
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -213,11 +215,15 @@ export default function PedidosPage() {
         }).eq('id', editandoPedido.id);
         if (pe) throw new Error(pe.message);
 
-        for (const d of (editandoPedido.detalle || [])) {
-          const prod = d.producto as unknown as Producto;
-          if (prod?.id) {
-            await supabase.from('productos').update({ stock: prod.stock + d.cantidad }).eq('id', prod.id);
-          }
+        // Solo se ajusta stock si el pedido ya estaba entregado/pagado (stock ya descontado)
+        const yaDescontado = CONSUMEN_STOCK.includes(editandoPedido.estado);
+
+        if (yaDescontado) {
+          // Devolver el stock de los productos que tenía antes
+          await ajustarStock((editandoPedido.detalle || []).map((d) => {
+            const prod = d.producto as unknown as Producto;
+            return { id: prod?.id, cantidad: d.cantidad };
+          }), +1);
         }
 
         await supabase.from('detalle_pedido').delete().eq('pedido_id', editandoPedido.id);
@@ -226,11 +232,9 @@ export default function PedidosPage() {
         );
         if (de) throw new Error(de.message);
 
-        for (const item of items) {
-          const prodActual = todosProductos.find((p) => p.id === item.producto.id);
-          if (prodActual) {
-            await supabase.from('productos').update({ stock: Math.max(0, prodActual.stock - item.cantidad) }).eq('id', item.producto.id);
-          }
+        if (yaDescontado) {
+          // Descontar el stock de los productos nuevos
+          await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad })), -1);
         }
       } else {
         const { data: pedido, error: pe } = await supabase.from('pedidos').insert({
@@ -245,9 +249,7 @@ export default function PedidosPage() {
         );
         if (de) throw new Error(de.message);
 
-        for (const item of items) {
-          await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
-        }
+        // El stock NO se descuenta al crear: baja cuando el pedido pasa a "entregado".
 
         // Email nuevo pedido
         const clienteData = clientes.find((c) => c.id === clienteId);
@@ -381,20 +383,47 @@ export default function PedidosPage() {
     } catch {}
   }
 
+  // Descuenta (signo -1) o devuelve (signo +1) stock leyendo el valor actual de cada producto
+  async function ajustarStock(movimientos: { id?: string; cantidad: number }[], signo: number) {
+    for (const m of movimientos) {
+      if (!m.id) continue;
+      const { data } = await supabase.from('productos').select('stock').eq('id', m.id).single();
+      const actual = data?.stock ?? 0;
+      const nuevo = signo < 0 ? Math.max(0, actual - m.cantidad) : actual + m.cantidad;
+      await supabase.from('productos').update({ stock: nuevo }).eq('id', m.id);
+    }
+  }
+
   async function cambiarEstado(id: string, estado: EstadoPedido) {
-    await supabase.from('pedidos').update({ estado }).eq('id', id);
-    if (estado === 'pagado') {
-      const p = pedidos.find((x) => x.id === id);
-      if (p) {
-        await enviarEmail('pedido_pagado', {
-          cliente: p.cliente?.nombre ?? '—',
-          vendedor: p.vendedor,
-          fecha: p.fecha,
-          total: p.total,
-        });
+    const p = pedidos.find((x) => x.id === id);
+
+    // Ajustar stock según entra o sale de un estado que consume stock (entregado/pagado)
+    if (p) {
+      const eraConsumido = CONSUMEN_STOCK.includes(p.estado);
+      const seraConsumido = CONSUMEN_STOCK.includes(estado);
+      const movimientos = (p.detalle || []).map((d) => {
+        const prod = d.producto as unknown as Producto;
+        return { id: prod?.id, cantidad: d.cantidad };
+      });
+      if (!eraConsumido && seraConsumido) {
+        await ajustarStock(movimientos, -1); // pasa a entregado → baja stock
+      } else if (eraConsumido && !seraConsumido) {
+        await ajustarStock(movimientos, +1); // vuelve atrás → devuelve stock
       }
     }
+
+    await supabase.from('pedidos').update({ estado }).eq('id', id);
+    if (estado === 'pagado' && p) {
+      await enviarEmail('pedido_pagado', {
+        cliente: p.cliente?.nombre ?? '—',
+        vendedor: p.vendedor,
+        fecha: p.fecha,
+        total: p.total,
+      });
+    }
     await fetchPedidos(inicioMes, finMes);
+    const { data: prods } = await supabase.from('productos').select('*').order('nombre');
+    if (prods) { setTodosProductos(prods); setProductos(prods); }
   }
 
   async function cambiarEstadoDetalle(id: string, estado: string) {
@@ -403,17 +432,19 @@ export default function PedidosPage() {
   }
 
   async function eliminarPedido(p: Pedido) {
-    // Devolver stock
-    for (const d of (p.detalle || [])) {
-      const prod = d.producto as unknown as Producto;
-      if (prod?.id) {
-        await supabase.from('productos').update({ stock: prod.stock + d.cantidad }).eq('id', prod.id);
-      }
+    // Solo devolver stock si el pedido ya lo había descontado (entregado/pagado)
+    if (CONSUMEN_STOCK.includes(p.estado)) {
+      await ajustarStock((p.detalle || []).map((d) => {
+        const prod = d.producto as unknown as Producto;
+        return { id: prod?.id, cantidad: d.cantidad };
+      }), +1);
     }
     await supabase.from('detalle_pedido').delete().eq('pedido_id', p.id);
     await supabase.from('pedidos').delete().eq('id', p.id);
     setPedidoAEliminar(null);
     await fetchPedidos(inicioMes, finMes);
+    const { data: prods } = await supabase.from('productos').select('*').order('nombre');
+    if (prods) { setTodosProductos(prods); setProductos(prods); }
   }
 
   // Orden por estado: pendiente → preparado → entregado → pagado
@@ -968,7 +999,7 @@ export default function PedidosPage() {
               Total: <strong style={{ color: '#f5f5f5' }}>{fmt(pedidoAEliminar.total)}</strong>
             </p>
             <p className="text-xs mb-4 p-3 rounded-lg" style={{ backgroundColor: '#e5393515', color: '#e53935' }}>
-              ⚠️ Esta acción no se puede deshacer. El stock será devuelto automáticamente.
+              ⚠️ Esta acción no se puede deshacer.{CONSUMEN_STOCK.includes(pedidoAEliminar.estado) ? ' El stock será devuelto automáticamente.' : ''}
             </p>
             <div className="flex gap-3">
               <button onClick={() => setPedidoAEliminar(null)}
