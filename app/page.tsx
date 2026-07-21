@@ -25,6 +25,8 @@ interface Stats {
   ventasMes: number;
   ventasDetalleMes: number;
   utilidadMes: number;
+  ventasLote: number;
+  utilidadLote: number;
   pedidosMes: number;
   ticketPromedio: number;
   productoMasVendido: string;
@@ -75,6 +77,10 @@ export default function DashboardPage() {
           detallePendienteRes,
           pedidosEstadoRes,
           detalleEstadoRes,
+          pedidosLoteRes,
+          detalleLoteRes,
+          eventosLoteRes,
+          facturasLoteRes,
         ] = await Promise.all([
           supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
@@ -90,6 +96,11 @@ export default function DashboardPage() {
           supabase.from('ventas_detalle').select('id, total').in('estado', ['pendiente', 'preparado']),
           supabase.from('pedidos').select('estado, total').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_detalle').select('estado, total').gte('fecha', inicioMes).lte('fecha', finMes),
+          // Lote actual (período sin cerrar): todo lo que aún no ha sido archivado
+          supabase.from('pedidos').select('total').is('periodo_id', null),
+          supabase.from('ventas_detalle').select('total').is('periodo_id', null),
+          supabase.from('ventas_evento').select('total').is('periodo_id', null),
+          supabase.from('costos_factura').select('monto').is('periodo_id', null),
         ]);
 
         const pedidosMes = (pedidosMesRes.data || []) as any[];
@@ -109,6 +120,14 @@ export default function DashboardPage() {
         // Utilidad del mes = ventas del mes - facturas (costos) del mes
         const facturasMes = ((facturasMesRes.data || []) as any[]).reduce((s, f) => s + f.monto, 0);
         const utilidadMes = ventasMes - facturasMes;
+
+        // Utilidad del LOTE actual (período sin cerrar) = ventas del lote - facturas del lote
+        const ventasLote =
+          ((pedidosLoteRes.data || []) as any[]).reduce((s, x) => s + x.total, 0) +
+          ((detalleLoteRes.data || []) as any[]).reduce((s, x) => s + x.total, 0) +
+          ((eventosLoteRes.data || []) as any[]).reduce((s, x) => s + x.total, 0);
+        const costosLote = ((facturasLoteRes.data || []) as any[]).reduce((s, f) => s + f.monto, 0);
+        const utilidadLote = ventasLote - costosLote;
 
         // Desglose por estado (pedidos a locales y ventas al detalle del mes)
         const agruparPorEstado = (filas: any[]) => {
@@ -171,6 +190,8 @@ export default function DashboardPage() {
           ventasMes,
           ventasDetalleMes: ventasDetalle,
           utilidadMes,
+          ventasLote,
+          utilidadLote,
           pedidosPorEstado,
           detallePorEstado,
           pedidosMes: pedidosMes.length,
@@ -214,15 +235,15 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Utilidad del mes destacada */}
+      {/* Utilidad del lote destacada */}
       {(() => {
-        const util = stats?.utilidadMes ?? 0;
-        const ventas = stats?.ventasMes ?? 0;
+        const util = stats?.utilidadLote ?? 0;
+        const ventas = stats?.ventasLote ?? 0;
         const margen = ventas > 0 ? Math.round((util / ventas) * 100) : 0;
         const color = util > 0 ? '#4caf50' : util < 0 ? '#e53935' : '#6b7280';
         return (
           <div className="rounded-xl border p-5 mb-4" style={{ backgroundColor: '#141414', borderColor: color + '60', borderLeftWidth: 4, borderLeftColor: color }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>💰 Utilidad de {MESES[new Date().getMonth()]}</p>
+            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>💰 Utilidad del lote actual</p>
             <p className="text-4xl font-extrabold" style={{ color }}>{fmt(util)}</p>
             <p className="text-xs mt-1" style={{ color: '#6b7280' }}>
               Ventas {fmt(ventas)} · Margen <span style={{ color }}>{margen}%</span>
@@ -240,8 +261,8 @@ export default function DashboardPage() {
             <p className="text-xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(stats?.ventasMes ?? 0)}</p>
           </Link>
           <Link href="/periodos" className="rounded-lg p-3 block transition-colors hover:brightness-125" style={{ backgroundColor: '#1c1c1c' }}>
-            <p className="text-xs mb-1" style={{ color: '#6b7280' }}>💰 Utilidad del mes</p>
-            <p className="text-xl font-extrabold" style={{ color: (stats?.utilidadMes ?? 0) < 0 ? '#e53935' : '#2196f3' }}>{fmt(stats?.utilidadMes ?? 0)}</p>
+            <p className="text-xs mb-1" style={{ color: '#6b7280' }}>💰 Utilidad del lote</p>
+            <p className="text-xl font-extrabold" style={{ color: (stats?.utilidadLote ?? 0) < 0 ? '#e53935' : '#2196f3' }}>{fmt(stats?.utilidadLote ?? 0)}</p>
           </Link>
           <Link href="/ventas-mes" className="rounded-lg p-3 block transition-colors hover:brightness-125" style={{ backgroundColor: '#1c1c1c' }}>
             <p className="text-xs mb-1" style={{ color: '#6b7280' }}>🛒 Ventas al detalle</p>
