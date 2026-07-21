@@ -24,6 +24,8 @@ interface ItemMerma {
 interface Merma {
   id: string;
   producto_id: string | null;
+  cliente_id: string | null;
+  influencer_id: string | null;
   cantidad: number;
   motivo: Motivo;
   fecha: string;
@@ -46,6 +48,7 @@ export default function MermaPage() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mermaAEliminar, setMermaAEliminar] = useState<Merma | null>(null);
+  const [editando, setEditando] = useState<Merma | null>(null);
 
   // Form
   const [items, setItems] = useState<ItemMerma[]>([]);
@@ -74,12 +77,32 @@ export default function MermaPage() {
   useEffect(() => { fetchDatos().finally(() => setLoading(false)); }, [fetchDatos]);
 
   function abrirNueva() {
+    setEditando(null);
     setItems([]); setMotivo('devolucion'); setClienteId(''); setInfluencerId(''); setDestino('local');
     setFecha(new Date().toISOString().split('T')[0]); setObservaciones('');
     setShowModal(true);
   }
 
+  function abrirEditar(m: Merma) {
+    setEditando(m);
+    setMotivo(m.motivo);
+    const esInfluencer = !!m.influencer_id;
+    setDestino(esInfluencer ? 'influencer' : 'local');
+    setClienteId(m.cliente_id || '');
+    setInfluencerId(m.influencer_id || '');
+    setFecha(m.fecha);
+    setObservaciones(m.observaciones || '');
+    const prod = productos.find((p) => p.id === m.producto_id);
+    setItems(prod ? [{ producto: prod, cantidad: m.cantidad }] : []);
+    setShowModal(true);
+  }
+
   function toggleProducto(p: ProductoOpt) {
+    // En edición solo se maneja un producto por registro
+    if (editando) {
+      setItems((prev) => prev[0]?.producto.id === p.id ? [] : [{ producto: p, cantidad: prev[0]?.cantidad ?? 1 }]);
+      return;
+    }
     const exists = items.find((i) => i.producto.id === p.id);
     if (exists) setItems((prev) => prev.filter((i) => i.producto.id !== p.id));
     else setItems((prev) => [...prev, { producto: p, cantidad: 1 }]);
@@ -94,21 +117,40 @@ export default function MermaPage() {
       const cliente_id = esMuestraInfluencer ? null : (clienteId || null);
       const influencer_id = esMuestraInfluencer ? (influencerId || null) : null;
 
-      const { error } = await supabase.from('mermas').insert(
-        items.map((i) => ({
-          producto_id: i.producto.id, cantidad: i.cantidad, motivo, fecha,
-          cliente_id, influencer_id,
-          observaciones: observaciones || null,
-        }))
-      );
-      if (error) throw error;
+      if (editando) {
+        const it = items[0];
+        // Devolver el stock del producto/cantidad anterior
+        if (editando.producto_id) {
+          const { data } = await supabase.from('productos').select('stock').eq('id', editando.producto_id).single();
+          if (data) await supabase.from('productos').update({ stock: data.stock + editando.cantidad }).eq('id', editando.producto_id);
+        }
+        // Descontar el stock del producto/cantidad nuevo
+        const { data: pn } = await supabase.from('productos').select('stock').eq('id', it.producto.id).single();
+        await supabase.from('productos').update({ stock: Math.max(0, (pn?.stock ?? 0) - it.cantidad) }).eq('id', it.producto.id);
 
-      // Descontar del stock
-      await Promise.all(items.map((i) =>
-        supabase.from('productos').update({ stock: Math.max(0, i.producto.stock - i.cantidad) }).eq('id', i.producto.id)
-      ));
+        const { error } = await supabase.from('mermas').update({
+          producto_id: it.producto.id, cantidad: it.cantidad, motivo, fecha,
+          cliente_id, influencer_id, observaciones: observaciones || null,
+        }).eq('id', editando.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('mermas').insert(
+          items.map((i) => ({
+            producto_id: i.producto.id, cantidad: i.cantidad, motivo, fecha,
+            cliente_id, influencer_id,
+            observaciones: observaciones || null,
+          }))
+        );
+        if (error) throw error;
+
+        // Descontar del stock
+        await Promise.all(items.map((i) =>
+          supabase.from('productos').update({ stock: Math.max(0, i.producto.stock - i.cantidad) }).eq('id', i.producto.id)
+        ));
+      }
 
       setShowModal(false);
+      setEditando(null);
       await fetchDatos();
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
@@ -196,9 +238,14 @@ export default function MermaPage() {
                     <p className="text-xs" style={{ color: '#6b7280' }}>Valor venta: {fmt(valorDe(m))}</p>
                     {m.observaciones && <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{m.observaciones}</p>}
                   </div>
-                  <button onClick={() => setMermaAEliminar(m)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center border text-base flex-shrink-0"
-                    style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button onClick={() => abrirEditar(m)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
+                      style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>✏️</button>
+                    <button onClick={() => setMermaAEliminar(m)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
+                      style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
+                  </div>
                 </div>
               </div>
             );
@@ -211,8 +258,8 @@ export default function MermaPage() {
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
           <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[90vh]" style={{ backgroundColor: '#141414' }}>
             <div className="flex justify-between items-center mb-4">
-              <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>📉 Registrar Merma</h2>
-              <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
+              <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>{editando ? '✏️ Editar Merma' : '📉 Registrar Merma'}</h2>
+              <button onClick={() => { setShowModal(false); setEditando(null); }} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
             {/* Toggle motivo (como el toggle de tipo de venta) */}
@@ -332,7 +379,7 @@ export default function MermaPage() {
             <button onClick={guardar} disabled={saving || items.length === 0}
               className="w-full py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40"
               style={{ backgroundColor: colorMotivo }}>
-              {saving ? 'Guardando...' : `Registrar ${totalUnidades > 0 ? `${totalUnidades} paquete${totalUnidades !== 1 ? 's' : ''}` : 'merma'} y descontar stock`}
+              {saving ? 'Guardando...' : editando ? 'Guardar cambios' : `Registrar ${totalUnidades > 0 ? `${totalUnidades} paquete${totalUnidades !== 1 ? 's' : ''}` : 'merma'} y descontar stock`}
             </button>
           </div>
         </div>
