@@ -39,7 +39,7 @@ interface VentaDetalle {
   vendedor: string | null;
   nombre_comprador: string | null;
   observaciones: string | null;
-  items: { nombre: string; cantidad: number; precio_unitario: number }[];
+  items: { producto_id: string | null; nombre: string; cantidad: number; precio_unitario: number }[];
 }
 
 export default function PedidosPage() {
@@ -114,14 +114,14 @@ export default function PedidosPage() {
     try {
       const { data } = await supabase
         .from('ventas_detalle')
-        .select('id, fecha, total, estado, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
+        .select('id, fecha, total, estado, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto_id, producto:productos(nombre))')
         .gte('fecha', inicio)
         .lte('fecha', fin)
         .order('fecha', { ascending: false });
       if (data) {
         const mapped: VentaDetalle[] = (data as unknown as Array<{
           id: string; fecha: string; total: number; estado: string; vendedor: string | null; nombre_comprador: string | null; observaciones: string | null;
-          items: Array<{ cantidad: number; precio_unitario: number; producto: { nombre: string } | null }>;
+          items: Array<{ cantidad: number; precio_unitario: number; producto_id: string | null; producto: { nombre: string } | null }>;
         }>).map((v) => ({
           id: v.id,
           fecha: v.fecha,
@@ -131,6 +131,7 @@ export default function PedidosPage() {
           nombre_comprador: v.nombre_comprador,
           observaciones: v.observaciones,
           items: (v.items || []).map((i) => ({
+            producto_id: i.producto_id,
             nombre: i.producto?.nombre ?? '—',
             cantidad: i.cantidad,
             precio_unitario: i.precio_unitario,
@@ -336,8 +337,9 @@ export default function PedidosPage() {
       );
       if (ie) throw new Error(ie.message);
 
-      for (const item of items) {
-        await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
+      // El stock solo baja si la venta se registra ya como entregada/pagada
+      if (CONSUMEN_STOCK.includes(estadoDetalle)) {
+        await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad })), -1);
       }
 
       setItems([]);
@@ -427,8 +429,21 @@ export default function PedidosPage() {
   }
 
   async function cambiarEstadoDetalle(id: string, estado: string) {
+    const v = ventasDetalle.find((x) => x.id === id);
+    if (v) {
+      const eraConsumido = CONSUMEN_STOCK.includes(v.estado);
+      const seraConsumido = CONSUMEN_STOCK.includes(estado);
+      const movimientos = (v.items || []).map((i) => ({ id: i.producto_id ?? undefined, cantidad: i.cantidad }));
+      if (!eraConsumido && seraConsumido) {
+        await ajustarStock(movimientos, -1); // pasa a entregado → baja stock
+      } else if (eraConsumido && !seraConsumido) {
+        await ajustarStock(movimientos, +1); // vuelve atrás → devuelve stock
+      }
+    }
     await supabase.from('ventas_detalle').update({ estado }).eq('id', id);
     await fetchVentasDetalle(inicioMes, finMes);
+    const { data: prods } = await supabase.from('productos').select('*').order('nombre');
+    if (prods) { setTodosProductos(prods); setProductos(prods); }
   }
 
   async function eliminarPedido(p: Pedido) {
