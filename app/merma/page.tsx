@@ -5,8 +5,7 @@ import { supabase } from '@/lib/supabase';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 
-type Motivo = 'devolucion' | 'degustacion' | 'muestra';
-type Destino = 'local' | 'influencer';
+type Motivo = 'devolucion' | 'degustacion' | 'muestra' | 'muestra_influencer';
 
 interface ProductoOpt {
   id: string;
@@ -39,6 +38,7 @@ const MOTIVOS: { key: Motivo; label: string; color: string }[] = [
   { key: 'devolucion', label: '↩️ Devolución', color: '#e53935' },
   { key: 'degustacion', label: '🍴 Degustación', color: '#ff9800' },
   { key: 'muestra', label: '🎁 Muestra', color: '#9c27b0' },
+  { key: 'muestra_influencer', label: '📣 Muestra a influencer', color: '#2196f3' },
 ];
 
 export default function MermaPage() {
@@ -57,7 +57,6 @@ export default function MermaPage() {
   const [observaciones, setObservaciones] = useState('');
   const [clienteId, setClienteId] = useState('');
   const [influencerId, setInfluencerId] = useState('');
-  const [destino, setDestino] = useState<Destino>('local');
   const [clientes, setClientes] = useState<{ id: string; nombre: string }[]>([]);
   const [influencers, setInfluencers] = useState<{ id: string; nombre: string }[]>([]);
 
@@ -78,16 +77,15 @@ export default function MermaPage() {
 
   function abrirNueva() {
     setEditando(null);
-    setItems([]); setMotivo('devolucion'); setClienteId(''); setInfluencerId(''); setDestino('local');
+    setItems([]); setMotivo('devolucion'); setClienteId(''); setInfluencerId('');
     setFecha(new Date().toISOString().split('T')[0]); setObservaciones('');
     setShowModal(true);
   }
 
   function abrirEditar(m: Merma) {
     setEditando(m);
-    setMotivo(m.motivo);
-    const esInfluencer = !!m.influencer_id;
-    setDestino(esInfluencer ? 'influencer' : 'local');
+    // Compatibilidad: muestras viejas a influencer guardadas como 'muestra'
+    setMotivo(m.motivo === 'muestra' && m.influencer_id ? 'muestra_influencer' : m.motivo);
     setClienteId(m.cliente_id || '');
     setInfluencerId(m.influencer_id || '');
     setFecha(m.fecha);
@@ -112,8 +110,8 @@ export default function MermaPage() {
     if (items.length === 0) return;
     setSaving(true);
     try {
-      // Para muestras se elige local (cliente) o influencer; para el resto solo cliente
-      const esMuestraInfluencer = motivo === 'muestra' && destino === 'influencer';
+      // Muestra a influencer usa influencer; el resto usa cliente
+      const esMuestraInfluencer = motivo === 'muestra_influencer';
       const cliente_id = esMuestraInfluencer ? null : (clienteId || null);
       const influencer_id = esMuestraInfluencer ? (influencerId || null) : null;
 
@@ -182,6 +180,7 @@ export default function MermaPage() {
   const totalDevolucion = mermas.filter((m) => m.motivo === 'devolucion');
   const totalDegustacion = mermas.filter((m) => m.motivo === 'degustacion');
   const totalMuestra = mermas.filter((m) => m.motivo === 'muestra');
+  const totalMuestraInf = mermas.filter((m) => m.motivo === 'muestra_influencer');
   const totalUnidades = items.reduce((s, i) => s + i.cantidad, 0);
   const colorMotivo = MOTIVOS.find((x) => x.key === motivo)!.color;
 
@@ -191,6 +190,7 @@ export default function MermaPage() {
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Merma</h1>
           <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Devoluciones, degustaciones y muestras — se descuentan del stock</p>
+
         </div>
         <button onClick={abrirNueva} className="px-4 py-2 rounded-lg font-bold text-sm text-white flex-shrink-0" style={{ backgroundColor: '#e53935' }}>
           + Registrar
@@ -198,11 +198,12 @@ export default function MermaPage() {
       </div>
 
       {/* Totales */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-2 gap-3 mb-6">
         {[
           { label: '↩️ Devoluciones', lista: totalDevolucion, color: '#e53935' },
           { label: '🍴 Degustaciones', lista: totalDegustacion, color: '#ff9800' },
           { label: '🎁 Muestras', lista: totalMuestra, color: '#9c27b0' },
+          { label: '📣 Muestras a influencer', lista: totalMuestraInf, color: '#2196f3' },
         ].map((t) => (
           <div key={t.label} className="rounded-xl border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: t.color }}>
             <p className="text-xs" style={{ color: '#6b7280' }}>{t.label}</p>
@@ -262,11 +263,12 @@ export default function MermaPage() {
               <button onClick={() => { setShowModal(false); setEditando(null); }} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
-            {/* Toggle motivo (como el toggle de tipo de venta) */}
-            <div className="flex gap-2 mb-4">
+            {/* Toggle motivo (2x2 para que quepan las 4 opciones) */}
+            <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Motivo</label>
+            <div className="grid grid-cols-2 gap-2 mb-4">
               {MOTIVOS.map((mot) => (
                 <button key={mot.key} onClick={() => setMotivo(mot.key)}
-                  className="flex-1 py-2 px-1 rounded-lg border text-xs font-semibold"
+                  className="py-2 px-1 rounded-lg border text-xs font-semibold"
                   style={{
                     borderColor: motivo === mot.key ? mot.color : '#2a2a2a',
                     backgroundColor: motivo === mot.key ? mot.color + '20' : 'transparent',
@@ -277,42 +279,16 @@ export default function MermaPage() {
               ))}
             </div>
 
-            {motivo === 'muestra' ? (
+            {motivo === 'muestra_influencer' ? (
               <>
-                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>¿Para quién?</label>
-                <div className="flex gap-2 mb-3">
-                  {([
-                    { key: 'local' as Destino, label: '🏪 Local' },
-                    { key: 'influencer' as Destino, label: '📣 Influencer' },
-                  ]).map((d) => (
-                    <button key={d.key} onClick={() => setDestino(d.key)}
-                      className="flex-1 py-2 rounded-lg border text-xs font-semibold"
-                      style={{
-                        borderColor: destino === d.key ? '#9c27b0' : '#2a2a2a',
-                        backgroundColor: destino === d.key ? '#9c27b020' : 'transparent',
-                        color: destino === d.key ? '#9c27b0' : '#9ca3af',
-                      }}>
-                      {d.label}
-                    </button>
-                  ))}
-                </div>
-
-                {destino === 'local' ? (
-                  <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}
-                    className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
-                    style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: clienteId ? '#f5f5f5' : '#6b7280' }}>
-                    <option value="">— Seleccionar local —</option>
-                    {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                  </select>
-                ) : (
-                  <select value={influencerId} onChange={(e) => setInfluencerId(e.target.value)}
-                    className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
-                    style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: influencerId ? '#f5f5f5' : '#6b7280' }}>
-                    <option value="">— Seleccionar influencer —</option>
-                    {influencers.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}
-                  </select>
-                )}
-                {destino === 'influencer' && influencers.length === 0 && (
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Influencer</label>
+                <select value={influencerId} onChange={(e) => setInfluencerId(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+                  style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: influencerId ? '#f5f5f5' : '#6b7280' }}>
+                  <option value="">— Seleccionar influencer —</option>
+                  {influencers.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}
+                </select>
+                {influencers.length === 0 && (
                   <p className="text-xs mb-3" style={{ color: '#ff9800' }}>No hay influencers cargados. Agrégalos en la sección Pendientes.</p>
                 )}
               </>
