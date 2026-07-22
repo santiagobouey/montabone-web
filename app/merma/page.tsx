@@ -25,6 +25,7 @@ interface Merma {
   producto_id: string | null;
   cliente_id: string | null;
   influencer_id: string | null;
+  destino_nombre: string | null;
   cantidad: number;
   motivo: Motivo;
   fecha: string;
@@ -56,28 +57,25 @@ export default function MermaPage() {
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [observaciones, setObservaciones] = useState('');
   const [clienteId, setClienteId] = useState('');
-  const [influencerId, setInfluencerId] = useState('');
+  const [destinoNombre, setDestinoNombre] = useState('');
   const [clientes, setClientes] = useState<{ id: string; nombre: string }[]>([]);
-  const [influencers, setInfluencers] = useState<{ id: string; nombre: string }[]>([]);
 
   const fetchDatos = useCallback(async () => {
-    const [merRes, prodRes, cliRes, infRes] = await Promise.all([
+    const [merRes, prodRes, cliRes] = await Promise.all([
       supabase.from('mermas').select('*, producto:productos(nombre, precio), cliente:clientes(nombre), influencer:influencers(nombre)').order('fecha', { ascending: false }),
       supabase.from('productos').select('id, nombre, formato, stock, precio').order('nombre'),
       supabase.from('clientes').select('id, nombre').order('nombre'),
-      supabase.from('influencers').select('id, nombre').order('nombre'),
     ]);
     setMermas((merRes.data || []) as Merma[]);
     setProductos((prodRes.data || []) as ProductoOpt[]);
     setClientes(cliRes.data || []);
-    setInfluencers(infRes.data || []);
   }, []);
 
   useEffect(() => { fetchDatos().finally(() => setLoading(false)); }, [fetchDatos]);
 
   function abrirNueva() {
     setEditando(null);
-    setItems([]); setMotivo('devolucion'); setClienteId(''); setInfluencerId('');
+    setItems([]); setMotivo('devolucion'); setClienteId(''); setDestinoNombre('');
     setFecha(new Date().toISOString().split('T')[0]); setObservaciones('');
     setShowModal(true);
   }
@@ -87,7 +85,8 @@ export default function MermaPage() {
     // Compatibilidad: muestras viejas a influencer guardadas como 'muestra'
     setMotivo(m.motivo === 'muestra' && m.influencer_id ? 'muestra_influencer' : m.motivo);
     setClienteId(m.cliente_id || '');
-    setInfluencerId(m.influencer_id || '');
+    // Nombre escrito: usa destino_nombre, o el nombre del cliente/influencer relacionado
+    setDestinoNombre(m.destino_nombre || m.influencer?.nombre || m.cliente?.nombre || '');
     setFecha(m.fecha);
     setObservaciones(m.observaciones || '');
     const prod = productos.find((p) => p.id === m.producto_id);
@@ -110,10 +109,11 @@ export default function MermaPage() {
     if (items.length === 0) return;
     setSaving(true);
     try {
-      // Muestra a influencer usa influencer; el resto usa cliente
-      const esMuestraInfluencer = motivo === 'muestra_influencer';
-      const cliente_id = esMuestraInfluencer ? null : (clienteId || null);
-      const influencer_id = esMuestraInfluencer ? (influencerId || null) : null;
+      // Muestras (a local o influencer) usan nombre escrito libre; devolución/degustación usan cliente
+      const esMuestra = motivo === 'muestra' || motivo === 'muestra_influencer';
+      const cliente_id = esMuestra ? null : (clienteId || null);
+      const influencer_id = null;
+      const destino_nombre = esMuestra ? (destinoNombre.trim() || null) : null;
 
       if (editando) {
         const it = items[0];
@@ -128,14 +128,14 @@ export default function MermaPage() {
 
         const { error } = await supabase.from('mermas').update({
           producto_id: it.producto.id, cantidad: it.cantidad, motivo, fecha,
-          cliente_id, influencer_id, observaciones: observaciones || null,
+          cliente_id, influencer_id, destino_nombre, observaciones: observaciones || null,
         }).eq('id', editando.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('mermas').insert(
           items.map((i) => ({
             producto_id: i.producto.id, cantidad: i.cantidad, motivo, fecha,
-            cliente_id, influencer_id,
+            cliente_id, influencer_id, destino_nombre,
             observaciones: observaciones || null,
           }))
         );
@@ -234,8 +234,12 @@ export default function MermaPage() {
                       <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
                     </div>
                     <p className="font-bold" style={{ color: '#f5f5f5' }}>{m.producto?.nombre ?? 'Producto eliminado'} — {m.cantidad} paquete{m.cantidad !== 1 ? 's' : ''}</p>
-                    {m.influencer && <p className="text-sm" style={{ color: '#9ca3af' }}>📣 {m.influencer.nombre}</p>}
-                    {m.cliente && <p className="text-sm" style={{ color: '#9ca3af' }}>🏪 {m.cliente.nombre}</p>}
+                    {(() => {
+                      const nombre = m.destino_nombre || m.influencer?.nombre || m.cliente?.nombre;
+                      if (!nombre) return null;
+                      const icono = m.motivo === 'muestra_influencer' ? '📣' : '🏪';
+                      return <p className="text-sm" style={{ color: '#9ca3af' }}>{icono} {nombre}</p>;
+                    })()}
                     <p className="text-xs" style={{ color: '#6b7280' }}>Valor venta: {fmt(valorDe(m))}</p>
                     {m.observaciones && <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{m.observaciones}</p>}
                   </div>
@@ -282,23 +286,26 @@ export default function MermaPage() {
             {motivo === 'muestra_influencer' ? (
               <>
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Influencer</label>
-                <select value={influencerId} onChange={(e) => setInfluencerId(e.target.value)}
+                <input value={destinoNombre} onChange={(e) => setDestinoNombre(e.target.value)}
+                  placeholder="Escribe el nombre del influencer"
                   className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
-                  style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: influencerId ? '#f5f5f5' : '#6b7280' }}>
-                  <option value="">— Seleccionar influencer —</option>
-                  {influencers.map((i) => <option key={i.id} value={i.id}>{i.nombre}</option>)}
-                </select>
-                {influencers.length === 0 && (
-                  <p className="text-xs mb-3" style={{ color: '#ff9800' }}>No hay influencers cargados. Agrégalos en la sección Pendientes.</p>
-                )}
+                  style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+              </>
+            ) : motivo === 'muestra' ? (
+              <>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Local</label>
+                <input value={destinoNombre} onChange={(e) => setDestinoNombre(e.target.value)}
+                  placeholder="Escribe el nombre del local"
+                  className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+                  style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
               </>
             ) : (
               <>
-                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>{motivo === 'muestra' ? 'Local' : 'Cliente'}</label>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cliente</label>
                 <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}
                   className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
                   style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: clienteId ? '#f5f5f5' : '#6b7280' }}>
-                  <option value="">— Seleccionar {motivo === 'muestra' ? 'local' : 'cliente (opcional)'} —</option>
+                  <option value="">— Seleccionar cliente (opcional) —</option>
                   {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
               </>
