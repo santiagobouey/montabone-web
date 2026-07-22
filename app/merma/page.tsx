@@ -266,44 +266,51 @@ export default function MermaPage() {
         ))}
       </div>
 
-      {/* Lista */}
+      {/* Lista agrupada por categoría */}
       {mermas.length === 0 ? (
         <div className="text-center py-12" style={{ color: '#6b7280' }}>
           <p className="text-3xl mb-2">📉</p>
           <p>No hay mermas registradas</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {mermas.map((m) => {
-            const mot = MOTIVOS.find((x) => x.key === m.motivo)!;
+        <div className="space-y-5">
+          {MOTIVOS.map((mot) => {
+            const lista = mermas.filter((m) => m.motivo === mot.key);
+            if (lista.length === 0) return null;
             return (
-              <div key={m.id} className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: mot.color }}>
-                <div className="flex justify-between items-start">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: mot.color + '20', color: mot.color }}>
-                        {mot.label}
-                      </span>
-                      <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
+              <div key={mot.key}>
+                <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: mot.color }}>
+                  {mot.label} ({lista.length})
+                </p>
+                <div className="space-y-3">
+                  {lista.map((m) => (
+                    <div key={m.id} className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: mot.color }}>
+                      <div className="flex justify-between items-start">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="text-xs" style={{ color: '#6b7280' }}>{new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</span>
+                          </div>
+                          <p className="font-bold" style={{ color: '#f5f5f5' }}>{m.producto?.nombre ?? 'Producto eliminado'} — {m.cantidad} paquete{m.cantidad !== 1 ? 's' : ''}</p>
+                          {(() => {
+                            const nombre = m.destino_nombre || m.influencer?.nombre || m.cliente?.nombre;
+                            if (!nombre) return null;
+                            const icono = m.motivo === 'muestra_influencer' ? '📣' : '🏪';
+                            return <p className="text-sm" style={{ color: '#9ca3af' }}>{icono} {nombre}</p>;
+                          })()}
+                          <p className="text-xs" style={{ color: '#6b7280' }}>Valor venta: {fmt(valorDe(m))}</p>
+                          {m.observaciones && <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{m.observaciones}</p>}
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button onClick={() => abrirEditar(m)}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
+                            style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>✏️</button>
+                          <button onClick={() => setMermaAEliminar(m)}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
+                            style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
+                        </div>
+                      </div>
                     </div>
-                    <p className="font-bold" style={{ color: '#f5f5f5' }}>{m.producto?.nombre ?? 'Producto eliminado'} — {m.cantidad} paquete{m.cantidad !== 1 ? 's' : ''}</p>
-                    {(() => {
-                      const nombre = m.destino_nombre || m.influencer?.nombre || m.cliente?.nombre;
-                      if (!nombre) return null;
-                      const icono = m.motivo === 'muestra_influencer' ? '📣' : '🏪';
-                      return <p className="text-sm" style={{ color: '#9ca3af' }}>{icono} {nombre}</p>;
-                    })()}
-                    <p className="text-xs" style={{ color: '#6b7280' }}>Valor venta: {fmt(valorDe(m))}</p>
-                    {m.observaciones && <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{m.observaciones}</p>}
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => abrirEditar(m)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
-                      style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>✏️</button>
-                    <button onClick={() => setMermaAEliminar(m)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center border text-base"
-                      style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
-                  </div>
+                  ))}
                 </div>
               </div>
             );
