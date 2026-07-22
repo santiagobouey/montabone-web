@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
+// Normaliza RUT: quita puntos, guiones y espacios para comparar (ej "76.123.456-7" → "761234567")
+const normRut = (r: string | null | undefined) => (r || '').replace(/[.\-\s]/g, '').toLowerCase();
 
 type Tipo = 'emitida' | 'compra';
 
@@ -19,6 +21,7 @@ interface Factura {
   folio: number | null;
   pagada: boolean;
   contraparte: string | null;
+  rut: string | null;
   descripcion: string | null;
   fecha: string;
   archivo_url: string | null;
@@ -57,6 +60,7 @@ export default function FacturasPage() {
   const [pagada, setPagada] = useState(false);
   const [neto, setNeto] = useState('');
   const [contraparte, setContraparte] = useState('');
+  const [rut, setRut] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [archivo, setArchivo] = useState<File | null>(null);
@@ -85,7 +89,7 @@ export default function FacturasPage() {
 
   function abrirNueva(t: Tipo) {
     setEditandoFactura(null);
-    setTipo(t); setCategoria('productos'); setFolio(''); setPagada(false); setNeto(''); setContraparte(''); setDescripcion('');
+    setTipo(t); setCategoria('productos'); setFolio(''); setPagada(false); setNeto(''); setContraparte(''); setRut(''); setDescripcion('');
     setFecha(new Date().toISOString().split('T')[0]); setArchivo(null);
     setAnalizando(false); setAnalizado(false); setContraparteNueva(false);
     setDatosContraparte(null);
@@ -102,6 +106,7 @@ export default function FacturasPage() {
     const lista = f.tipo === 'emitida' ? clientes : proveedores;
     const enLista = f.contraparte && lista.some((x) => x.nombre === f.contraparte);
     setContraparte(f.contraparte || '');
+    setRut(f.rut || '');
     setContraparteNueva(!!f.contraparte && !enLista);
     setDescripcion(f.descripcion || '');
     setFecha(f.fecha);
@@ -136,12 +141,20 @@ export default function FacturasPage() {
       setTipo(tipoDetectado);
       if (datos.neto) setNeto(String(datos.neto));
       else if (datos.total) setNeto(String(Math.round(datos.total / 1.19)));
-      if (datos.contraparte) {
-        const nombre = String(datos.contraparte);
+
+      const rutLeido = datos.contraparte_rut ? String(datos.contraparte_rut) : '';
+      setRut(rutLeido);
+
+      if (datos.contraparte || rutLeido) {
+        const nombre = datos.contraparte ? String(datos.contraparte) : '';
         const lista = tipoDetectado === 'emitida' ? clientes : proveedores;
-        const match = lista.find((x) => x.nombre.toLowerCase() === nombre.toLowerCase() || nombre.toLowerCase().includes(x.nombre.toLowerCase()) || x.nombre.toLowerCase().includes(nombre.toLowerCase()));
+        // 1° buscar por RUT (lo más confiable), 2° por nombre
+        let match = rutLeido ? lista.find((x) => x.rut && normRut(x.rut) === normRut(rutLeido)) : undefined;
+        if (!match && nombre) {
+          match = lista.find((x) => x.nombre.toLowerCase() === nombre.toLowerCase() || nombre.toLowerCase().includes(x.nombre.toLowerCase()) || x.nombre.toLowerCase().includes(nombre.toLowerCase()));
+        }
         if (match) {
-          setContraparte(match.nombre);
+          setContraparte(match.nombre); // usa el nombre del local guardado
           setContraparteNueva(false);
         } else {
           setContraparte(nombre);
@@ -185,6 +198,7 @@ export default function FacturasPage() {
       const payload: Record<string, unknown> = {
         tipo, categoria: tipo === 'compra' ? categoria : null,
         monto: totalNum, neto: netoNum, iva: ivaNum, contraparte: contraparte || null,
+        rut: rut || null,
         folio: folio ? parseInt(folio) : null,
         pagada: tipo === 'emitida' ? pagada : false,
         descripcion: descripcion || null, fecha,
@@ -290,6 +304,23 @@ export default function FacturasPage() {
   const ivaDebito = delMes.filter((f) => f.tipo === 'emitida').reduce((s, f) => s + ivaDe(f), 0);
   const ivaCredito = delMes.filter((f) => f.tipo === 'compra').reduce((s, f) => s + ivaDe(f), 0);
   const ivaAPagar = ivaDebito - ivaCredito;
+
+  // Resuelve el nombre del local: busca el cliente por RUT (o por razón social/nombre) y devuelve su nombre
+  function nombreLocal(f: Factura): string | null {
+    if (f.rut) {
+      const nr = normRut(f.rut);
+      const c = clientes.find((x) => x.rut && normRut(x.rut) === nr);
+      if (c) return c.nombre;
+    }
+    if (f.contraparte) {
+      const cp = f.contraparte.toLowerCase().trim();
+      const c = clientes.find((x) =>
+        (x.razon_social && x.razon_social.toLowerCase().trim() === cp) ||
+        (x.nombre && x.nombre.toLowerCase().trim() === cp));
+      if (c) return c.nombre;
+    }
+    return f.contraparte;
+  }
 
   const colorTipo = (t: Tipo) => (t === 'emitida' ? '#4caf50' : '#e53935');
 
@@ -450,7 +481,13 @@ export default function FacturasPage() {
                         </div>
                         <p className="font-bold" style={{ color: '#f5f5f5' }}>{fmt(f.monto)}</p>
                         {(f.neto > 0 || f.iva > 0) && <p className="text-xs" style={{ color: '#6b7280' }}>Neto {fmt(f.neto)} + IVA {fmt(f.iva)}</p>}
-                        {f.contraparte && <p className="text-sm" style={{ color: '#9ca3af' }}>{f.contraparte}</p>}
+                        {(() => {
+                          const local = nombreLocal(f);
+                          return local ? (
+                            <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>🏪 {local}</p>
+                          ) : null;
+                        })()}
+                        {f.rut && <p className="text-xs" style={{ color: '#6b7280' }}>RUT {f.rut}</p>}
                         {f.descripcion && <p className="text-xs" style={{ color: '#6b7280' }}>{f.descripcion}</p>}
                         {f.archivo_url && (
                           <a href={f.archivo_url} target="_blank" rel="noopener noreferrer"
@@ -556,6 +593,17 @@ export default function FacturasPage() {
               </button>
             )}
 
+            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>RUT del {tipo === 'emitida' ? 'cliente' : 'proveedor'}</label>
+            <input value={rut} onChange={(e) => setRut(e.target.value)} placeholder="ej: 76.123.456-7"
+              className="w-full rounded-lg px-3 py-2 text-sm border mb-1" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            {tipo === 'emitida' && rut && (() => {
+              const c = clientes.find((x) => x.rut && normRut(x.rut) === normRut(rut));
+              return c
+                ? <p className="text-xs mb-3" style={{ color: '#4caf50' }}>🏪 Conectado con: {c.nombre}</p>
+                : <p className="text-xs mb-3" style={{ color: '#6b7280' }}>Sin cliente con este RUT (se mostrará el nombre escrito)</p>;
+            })()}
+            {(tipo !== 'emitida' || !rut) && <div className="mb-2" />}
+
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>N° de factura (folio)</label>
             <input type="number" value={folio} onChange={(e) => setFolio(e.target.value)} placeholder="ej: 57"
               className="w-full rounded-lg px-3 py-2 text-sm border mb-3" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
@@ -588,7 +636,11 @@ export default function FacturasPage() {
                 value={(tipo === 'emitida' ? clientes : proveedores).some((x) => x.nombre === contraparte) ? contraparte : ''}
                 onChange={(e) => {
                   if (e.target.value === '__nuevo__') { setContraparteNueva(true); setContraparte(''); }
-                  else setContraparte(e.target.value);
+                  else {
+                    setContraparte(e.target.value);
+                    const sel = (tipo === 'emitida' ? clientes : proveedores).find((x) => x.nombre === e.target.value);
+                    if (sel?.rut) setRut(sel.rut); // completa el RUT del cliente elegido
+                  }
                 }}
                 className="w-full rounded-lg px-3 py-2 text-sm border mb-3"
                 style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: contraparte ? '#f5f5f5' : '#6b7280' }}>
