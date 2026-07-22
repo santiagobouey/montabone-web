@@ -37,7 +37,7 @@ interface Merma {
 const MOTIVOS: { key: Motivo; label: string; color: string }[] = [
   { key: 'devolucion', label: '↩️ Devolución', color: '#e53935' },
   { key: 'degustacion', label: '🍴 Degustación', color: '#ff9800' },
-  { key: 'muestra', label: '🎁 Muestra', color: '#9c27b0' },
+  { key: 'muestra', label: '🎁 Muestra a local', color: '#9c27b0' },
   { key: 'muestra_influencer', label: '📣 Muestra a influencer', color: '#2196f3' },
 ];
 
@@ -202,7 +202,7 @@ export default function MermaPage() {
         {[
           { label: '↩️ Devoluciones', lista: totalDevolucion, color: '#e53935' },
           { label: '🍴 Degustaciones', lista: totalDegustacion, color: '#ff9800' },
-          { label: '🎁 Muestras', lista: totalMuestra, color: '#9c27b0' },
+          { label: '🎁 Muestras a locales', lista: totalMuestra, color: '#9c27b0' },
           { label: '📣 Muestras a influencer', lista: totalMuestraInf, color: '#2196f3' },
         ].map((t) => (
           <div key={t.label} className="rounded-xl border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: t.color }}>
@@ -294,11 +294,11 @@ export default function MermaPage() {
               </>
             ) : (
               <>
-                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cliente</label>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>{motivo === 'muestra' ? 'Local' : 'Cliente'}</label>
                 <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}
                   className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
                   style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: clienteId ? '#f5f5f5' : '#6b7280' }}>
-                  <option value="">— Seleccionar cliente (opcional) —</option>
+                  <option value="">— Seleccionar {motivo === 'muestra' ? 'local' : 'cliente (opcional)'} —</option>
                   {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
               </>
