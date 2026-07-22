@@ -340,11 +340,19 @@ export default function MermaPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))}
-                      className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
-                    <span className="w-8 text-center font-extrabold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
-                    <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))}
-                      className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                    {(() => {
+                      // En muestra a local se puede contar en medios paquetes (0.5)
+                      const paso = motivo === 'muestra' ? 0.5 : 1;
+                      return (
+                        <>
+                          <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(paso, Math.round((i.cantidad - paso) * 2) / 2) } : i))}
+                            className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
+                          <span className="min-w-[2.5rem] text-center font-extrabold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
+                          <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.round((i.cantidad + paso) * 2) / 2 } : i))}
+                            className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                        </>
+                      );
+                    })()}
                     <span className="text-xs ml-1" style={{ color: '#6b7280' }}>paquete{item.cantidad !== 1 ? 's' : ''}</span>
                   </div>
                   {item.cantidad > item.producto.stock && (
