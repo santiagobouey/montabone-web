@@ -29,6 +29,8 @@ interface Merma {
   cantidad: number;
   motivo: Motivo;
   fecha: string;
+  seguimiento_fecha: string | null;
+  seguimiento_hecho: boolean;
   observaciones: string | null;
   producto: { nombre: string; precio: number } | null;
   cliente: { nombre: string } | null;
@@ -58,6 +60,8 @@ export default function MermaPage() {
   const [observaciones, setObservaciones] = useState('');
   const [clienteId, setClienteId] = useState('');
   const [destinoNombre, setDestinoNombre] = useState('');
+  const [seguimiento, setSeguimiento] = useState(true);
+  const [seguimientoFecha, setSeguimientoFecha] = useState('');
   const [clientes, setClientes] = useState<{ id: string; nombre: string }[]>([]);
 
   const fetchDatos = useCallback(async () => {
@@ -73,10 +77,13 @@ export default function MermaPage() {
 
   useEffect(() => { fetchDatos().finally(() => setLoading(false)); }, [fetchDatos]);
 
+  const enDias = (dias: number) => { const d = new Date(); d.setDate(d.getDate() + dias); return d.toISOString().split('T')[0]; };
+
   function abrirNueva() {
     setEditando(null);
     setItems([]); setMotivo('devolucion'); setClienteId(''); setDestinoNombre('');
     setFecha(new Date().toISOString().split('T')[0]); setObservaciones('');
+    setSeguimiento(true); setSeguimientoFecha(enDias(7));
     setShowModal(true);
   }
 
@@ -89,6 +96,8 @@ export default function MermaPage() {
     setDestinoNombre(m.destino_nombre || m.influencer?.nombre || m.cliente?.nombre || '');
     setFecha(m.fecha);
     setObservaciones(m.observaciones || '');
+    setSeguimiento(!!m.seguimiento_fecha);
+    setSeguimientoFecha(m.seguimiento_fecha || enDias(7));
     const prod = productos.find((p) => p.id === m.producto_id);
     setItems(prod ? [{ producto: prod, cantidad: m.cantidad }] : []);
     setShowModal(true);
@@ -114,6 +123,8 @@ export default function MermaPage() {
       const cliente_id = esMuestra ? null : (clienteId || null);
       const influencer_id = null;
       const destino_nombre = esMuestra ? (destinoNombre.trim() || null) : null;
+      // Seguimiento solo para muestra a local
+      const seguimiento_fecha = (motivo === 'muestra' && seguimiento) ? (seguimientoFecha || null) : null;
 
       if (editando) {
         const it = items[0];
@@ -128,14 +139,14 @@ export default function MermaPage() {
 
         const { error } = await supabase.from('mermas').update({
           producto_id: it.producto.id, cantidad: it.cantidad, motivo, fecha,
-          cliente_id, influencer_id, destino_nombre, observaciones: observaciones || null,
+          cliente_id, influencer_id, destino_nombre, seguimiento_fecha, observaciones: observaciones || null,
         }).eq('id', editando.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('mermas').insert(
           items.map((i) => ({
             producto_id: i.producto.id, cantidad: i.cantidad, motivo, fecha,
-            cliente_id, influencer_id, destino_nombre,
+            cliente_id, influencer_id, destino_nombre, seguimiento_fecha,
             observaciones: observaciones || null,
           }))
         );
@@ -154,6 +165,11 @@ export default function MermaPage() {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
     setSaving(false);
+  }
+
+  async function marcarSeguimiento(id: string, hecho: boolean) {
+    setMermas((prev) => prev.map((m) => m.id === id ? { ...m, seguimiento_hecho: hecho } : m));
+    await supabase.from('mermas').update({ seguimiento_hecho: hecho }).eq('id', id);
   }
 
   async function eliminar() {
@@ -184,6 +200,19 @@ export default function MermaPage() {
   const totalUnidades = items.reduce((s, i) => s + i.cantidad, 0);
   const colorMotivo = MOTIVOS.find((x) => x.key === motivo)!.color;
 
+  // Seguimientos de muestras a local pendientes (con fecha) agrupados por local
+  const hoyStr = new Date().toISOString().split('T')[0];
+  const pendientesSeg = mermas.filter((m) => m.motivo === 'muestra' && m.seguimiento_fecha && !m.seguimiento_hecho);
+  const segPorLocal = Object.values(
+    pendientesSeg.reduce((acc, m) => {
+      const key = (m.destino_nombre || 'Sin nombre') + '|' + m.seguimiento_fecha;
+      if (!acc[key]) acc[key] = { local: m.destino_nombre || 'Sin nombre', fecha: m.seguimiento_fecha!, productos: [], ids: [], vencido: m.seguimiento_fecha! <= hoyStr };
+      acc[key].productos.push(m.producto?.nombre ?? '—');
+      acc[key].ids.push(m.id);
+      return acc;
+    }, {} as Record<string, { local: string; fecha: string; productos: string[]; ids: string[]; vencido: boolean }>)
+  ).sort((a, b) => a.fecha.localeCompare(b.fecha));
+
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-4">
@@ -196,6 +225,30 @@ export default function MermaPage() {
           + Registrar
         </button>
       </div>
+
+      {/* Seguimientos pendientes de muestras a local */}
+      {segPorLocal.length > 0 && (
+        <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#9c27b060', borderLeftWidth: 4, borderLeftColor: '#9c27b0' }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#9c27b0' }}>🔔 Seguimiento de muestras ({segPorLocal.length})</p>
+          </div>
+          {segPorLocal.map((s, i) => (
+            <div key={s.local + s.fecha} className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: i < segPorLocal.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>🏪 {s.local}</p>
+                <p className="text-xs truncate" style={{ color: '#6b7280' }}>{s.productos.join(', ')}</p>
+                <p className="text-xs" style={{ color: s.vencido ? '#e53935' : '#6b7280' }}>
+                  {s.vencido ? '⏰ ' : '📅 '}Seguir el {new Date(s.fecha + 'T12:00:00').toLocaleDateString('es-CL')}
+                </p>
+              </div>
+              <button onClick={() => s.ids.forEach((id) => marcarSeguimiento(id, true))}
+                className="px-3 py-2 rounded-lg text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: '#4caf50' }}>
+                ✓ Ya seguí
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Totales */}
       <div className="grid grid-cols-2 gap-3 mb-6">
@@ -298,6 +351,45 @@ export default function MermaPage() {
                   placeholder="Escribe el nombre del local"
                   className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
                   style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+                {/* Seguimiento */}
+                <button onClick={() => setSeguimiento(!seguimiento)}
+                  className="w-full flex items-center gap-3 p-3 rounded-lg border mb-2 text-left"
+                  style={{ borderColor: seguimiento ? '#9c27b0' : '#2a2a2a', backgroundColor: seguimiento ? '#9c27b010' : 'transparent' }}>
+                  <div className="w-5 h-5 rounded flex items-center justify-center border-2 flex-shrink-0"
+                    style={{ borderColor: seguimiento ? '#9c27b0' : '#4b5563', backgroundColor: seguimiento ? '#9c27b0' : 'transparent' }}>
+                    {seguimiento && <span className="text-white text-xs font-bold">✓</span>}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>🔔 Recordarme hacer seguimiento</p>
+                    <p className="text-xs" style={{ color: '#6b7280' }}>Para preguntar si el local quiere comprar</p>
+                  </div>
+                </button>
+                {seguimiento && (
+                  <div className="mb-3">
+                    <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>¿Cuándo hacer el seguimiento?</label>
+                    <div className="flex gap-2 mb-2">
+                      {[
+                        { label: 'En 3 días', d: 3 },
+                        { label: 'En 1 semana', d: 7 },
+                        { label: 'En 2 semanas', d: 14 },
+                      ].map((op) => (
+                        <button key={op.d} onClick={() => setSeguimientoFecha(enDias(op.d))}
+                          className="flex-1 py-2 rounded-lg border text-xs font-semibold"
+                          style={{
+                            borderColor: seguimientoFecha === enDias(op.d) ? '#9c27b0' : '#2a2a2a',
+                            backgroundColor: seguimientoFecha === enDias(op.d) ? '#9c27b020' : 'transparent',
+                            color: seguimientoFecha === enDias(op.d) ? '#9c27b0' : '#9ca3af',
+                          }}>
+                          {op.label}
+                        </button>
+                      ))}
+                    </div>
+                    <input type="date" value={seguimientoFecha} onChange={(e) => setSeguimientoFecha(e.target.value)}
+                      className="w-full rounded-lg px-3 py-2 text-sm border"
+                      style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+                  </div>
+                )}
               </>
             ) : (
               <>

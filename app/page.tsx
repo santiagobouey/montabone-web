@@ -42,6 +42,7 @@ interface Stats {
   totalPorCobrar: number;
   stockBajo: Producto[];
   prospectosParaInsistir: { id: string; nombre_local: string; nombre_contacto: string }[];
+  seguimientosMuestras: { local: string; productos: string }[];
   // Muestras
   totalMuestras: number;
   muestrasPorProducto: { nombre: string; cantidad: number }[];
@@ -81,6 +82,7 @@ export default function DashboardPage() {
           detalleLoteRes,
           eventosLoteRes,
           facturasLoteRes,
+          seguimientosRes,
         ] = await Promise.all([
           supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
@@ -101,6 +103,7 @@ export default function DashboardPage() {
           supabase.from('ventas_detalle').select('total').is('periodo_id', null),
           supabase.from('ventas_evento').select('total').is('periodo_id', null),
           supabase.from('costos_factura').select('monto').is('periodo_id', null),
+          supabase.from('mermas').select('destino_nombre, seguimiento_fecha, producto:productos(nombre)').eq('motivo', 'muestra').eq('seguimiento_hecho', false).not('seguimiento_fecha', 'is', null).lte('seguimiento_fecha', hoyStr),
         ]);
 
         const pedidosMes = (pedidosMesRes.data || []) as any[];
@@ -177,6 +180,16 @@ export default function DashboardPage() {
           return { id: c.id, nombre: c.nombre, tipo: c.tipo, ultimaCompra, activo, activoManual };
         });
 
+        // Seguimientos de muestras a local pendientes (agrupados por local)
+        const segRaw = (seguimientosRes.data || []) as any[];
+        const segMap: Record<string, Set<string>> = {};
+        for (const s of segRaw) {
+          const local = s.destino_nombre || 'Sin nombre';
+          if (!segMap[local]) segMap[local] = new Set();
+          if (s.producto?.nombre) segMap[local].add(s.producto.nombre);
+        }
+        const seguimientosMuestras = Object.entries(segMap).map(([local, prods]) => ({ local, productos: Array.from(prods).join(', ') }));
+
         // Muestras
         const muestrasPorProducto: Record<string, number> = {};
         for (const m of muestrasData) {
@@ -205,6 +218,7 @@ export default function DashboardPage() {
           totalPorCobrar: (cobroRes.data || []).reduce((s, p) => s + p.total, 0) + (detallePendienteRes.data || []).reduce((s, v) => s + v.total, 0),
           stockBajo: prods.filter((p) => p.stock <= 10),
           prospectosParaInsistir: (prospectoRes.data || []).filter((p: any) => p.proxima_visita && p.proxima_visita <= hoyStr),
+          seguimientosMuestras,
           totalMuestras: muestrasData.reduce((s, m) => s + (m.cantidad || 0), 0),
           muestrasPorProducto: Object.entries(muestrasPorProducto).map(([nombre, cantidad]) => ({ nombre, cantidad })),
         });
@@ -325,6 +339,20 @@ export default function DashboardPage() {
           </div>
         );
       })()}
+
+      {/* Seguimiento de muestras a locales */}
+      {(stats?.seguimientosMuestras.length ?? 0) > 0 && (
+        <Link href="/merma" className="block rounded-xl border p-4 mb-4" style={{ backgroundColor: '#9c27b0' + '15', borderColor: '#9c27b0' + '60', borderLeftWidth: 4, borderLeftColor: '#9c27b0' }}>
+          <p className="font-bold text-sm mb-2" style={{ color: '#9c27b0' }}>
+            🔔 {stats!.seguimientosMuestras.length} muestra{stats!.seguimientosMuestras.length > 1 ? 's' : ''} para hacer seguimiento
+          </p>
+          {stats!.seguimientosMuestras.map((s, idx) => (
+            <p key={idx} className="text-sm py-0.5" style={{ color: '#f5f5f5' }}>
+              🏪 <span className="font-semibold">{s.local}</span> <span style={{ color: '#6b7280' }}>— {s.productos}</span>
+            </p>
+          ))}
+        </Link>
+      )}
 
       {/* Alertas rápidas */}
       <div className="grid grid-cols-2 gap-3 mb-4">
