@@ -200,18 +200,22 @@ export default function MermaPage() {
   const totalUnidades = items.reduce((s, i) => s + i.cantidad, 0);
   const colorMotivo = MOTIVOS.find((x) => x.key === motivo)!.color;
 
-  // Seguimientos de muestras a local pendientes (con fecha) agrupados por local
+  // Seguimientos de muestras a local, agrupados por local + fecha
   const hoyStr = new Date().toISOString().split('T')[0];
-  const pendientesSeg = mermas.filter((m) => m.motivo === 'muestra' && m.seguimiento_fecha && !m.seguimiento_hecho);
-  const segPorLocal = Object.values(
-    pendientesSeg.reduce((acc, m) => {
+  type SegGrupo = { local: string; fecha: string; productos: string[]; ids: string[]; total: number; hechos: number; vencido: boolean };
+  const gruposSeg = Object.values(
+    mermas.filter((m) => m.motivo === 'muestra' && m.seguimiento_fecha).reduce((acc, m) => {
       const key = (m.destino_nombre || 'Sin nombre') + '|' + m.seguimiento_fecha;
-      if (!acc[key]) acc[key] = { local: m.destino_nombre || 'Sin nombre', fecha: m.seguimiento_fecha!, productos: [], ids: [], vencido: m.seguimiento_fecha! <= hoyStr };
+      if (!acc[key]) acc[key] = { local: m.destino_nombre || 'Sin nombre', fecha: m.seguimiento_fecha!, productos: [], ids: [], total: 0, hechos: 0, vencido: m.seguimiento_fecha! <= hoyStr };
       acc[key].productos.push(m.producto?.nombre ?? '—');
       acc[key].ids.push(m.id);
+      acc[key].total += 1;
+      if (m.seguimiento_hecho) acc[key].hechos += 1;
       return acc;
-    }, {} as Record<string, { local: string; fecha: string; productos: string[]; ids: string[]; vencido: boolean }>)
-  ).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    }, {} as Record<string, SegGrupo>)
+  );
+  const segPendientes = gruposSeg.filter((g) => g.hechos < g.total).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const segHechos = gruposSeg.filter((g) => g.hechos >= g.total).sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto">
@@ -226,25 +230,45 @@ export default function MermaPage() {
         </button>
       </div>
 
-      {/* Seguimientos pendientes de muestras a local */}
-      {segPorLocal.length > 0 && (
-        <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#9c27b060', borderLeftWidth: 4, borderLeftColor: '#9c27b0' }}>
+      {/* Seguimiento de muestras — estilo checklist como Pendientes */}
+      {segPendientes.length > 0 && (
+        <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
           <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#9c27b0' }}>🔔 Seguimiento de muestras ({segPorLocal.length})</p>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#9c27b0' }}>🔔 Por seguir ({segPendientes.length})</p>
           </div>
-          {segPorLocal.map((s, i) => (
-            <div key={s.local + s.fecha} className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: i < segPorLocal.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
-              <div className="min-w-0">
+          {segPendientes.map((s, i) => (
+            <div key={s.local + s.fecha} className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: i < segPendientes.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+              <button onClick={() => s.ids.forEach((id) => marcarSeguimiento(id, true))}
+                className="w-6 h-6 rounded-full border-2 flex-shrink-0" style={{ borderColor: '#9c27b0' }}
+                aria-label="Marcar seguimiento como hecho" />
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>🏪 {s.local}</p>
                 <p className="text-xs truncate" style={{ color: '#6b7280' }}>{s.productos.join(', ')}</p>
                 <p className="text-xs" style={{ color: s.vencido ? '#e53935' : '#6b7280' }}>
                   {s.vencido ? '⏰ ' : '📅 '}Seguir el {new Date(s.fecha + 'T12:00:00').toLocaleDateString('es-CL')}
                 </p>
               </div>
-              <button onClick={() => s.ids.forEach((id) => marcarSeguimiento(id, true))}
-                className="px-3 py-2 rounded-lg text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: '#4caf50' }}>
-                ✓ Ya seguí
+            </div>
+          ))}
+        </div>
+      )}
+
+      {segHechos.length > 0 && (
+        <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#4caf50' }}>✅ Seguidos ({segHechos.length})</p>
+          </div>
+          {segHechos.map((s, i) => (
+            <div key={s.local + s.fecha} className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: i < segHechos.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+              <button onClick={() => s.ids.forEach((id) => marcarSeguimiento(id, false))}
+                className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: '#4caf50' }}
+                aria-label="Desmarcar">
+                <span className="text-white text-xs font-bold">✓</span>
               </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold line-through" style={{ color: '#6b7280' }}>🏪 {s.local}</p>
+                <p className="text-xs truncate" style={{ color: '#6b7280' }}>{s.productos.join(', ')}</p>
+              </div>
             </div>
           ))}
         </div>
