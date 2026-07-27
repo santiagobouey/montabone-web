@@ -69,6 +69,7 @@ export default function PedidosPage() {
   const [saving, setSaving] = useState(false);
   const [tipoModal, setTipoModal] = useState<'pedido' | 'evento' | 'detalle'>('pedido');
   const [editandoPedido, setEditandoPedido] = useState<Pedido | null>(null);
+  const [editandoDetalle, setEditandoDetalle] = useState<VentaDetalle | null>(null);
   const [conIva, setConIva] = useState(true);
   const [verVentasDetalle, setVerVentasDetalle] = useState(false);
   const [pedidoAEliminar, setPedidoAEliminar] = useState<Pedido | null>(null);
@@ -159,6 +160,7 @@ export default function PedidosPage() {
 
   function abrirNuevo(tipo: 'pedido' | 'evento' | 'detalle') {
     setEditandoPedido(null);
+    setEditandoDetalle(null);
     setTipoModal(tipo);
     setItems([]);
     setClienteId(''); setVendedor(''); setObservaciones('');
@@ -168,8 +170,34 @@ export default function PedidosPage() {
     setShowModal(true);
   }
 
+  function abrirEditarDetalle(v: VentaDetalle) {
+    setEditandoDetalle(v);
+    setEditandoPedido(null);
+    setTipoModal('detalle');
+    setFecha(v.fecha);
+    setNombreComprador(v.nombre_comprador || '');
+    setVendedor(v.vendedor || '');
+    setObservaciones(v.observaciones || '');
+    setEstadoDetalle(v.estado);
+    // Cargar items (buscar el producto completo por id)
+    const itemsCargados: ItemPedido[] = (v.items || []).map((it) => {
+      const prod = todosProductos.find((p) => p.id === it.producto_id);
+      return {
+        producto: (prod || { id: it.producto_id, nombre: it.nombre, stock: 0, precio: it.precio_unitario }) as unknown as Producto,
+        cantidad: it.cantidad,
+        precioUnitario: it.precio_unitario,
+      };
+    });
+    setItems(itemsCargados);
+    // Deducir si el total traía IVA (total ≈ neto*1.19)
+    const netoCarg = itemsCargados.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0);
+    setConIva(Math.abs(v.total - Math.round(netoCarg * 1.19)) <= Math.abs(v.total - netoCarg));
+    setShowModal(true);
+  }
+
   function abrirEditar(p: Pedido) {
     setEditandoPedido(p);
+    setEditandoDetalle(null);
     setTipoModal('pedido');
     setClienteId(p.cliente_id);
     setVendedor(p.vendedor);
@@ -312,42 +340,68 @@ export default function PedidosPage() {
     setSaving(true);
     try {
       const totalVenta = conIva ? Math.round(neto * 1.19) : neto;
-      const { data: venta, error: ve } = await supabase
-        .from('ventas_detalle')
-        .insert({
-          fecha,
-          total: totalVenta,
-          estado: estadoDetalle,
-          vendedor: vendedor || null,
-          nombre_comprador: nombreComprador || null,
+
+      if (editandoDetalle) {
+        // Si la venta estaba entregada/pagada, devolver el stock de los items anteriores
+        if (CONSUMEN_STOCK.includes(editandoDetalle.estado)) {
+          await ajustarStock((editandoDetalle.items || []).map((it) => ({ id: it.producto_id ?? undefined, cantidad: it.cantidad })), +1);
+        }
+        const { error: ue } = await supabase.from('ventas_detalle').update({
+          fecha, total: totalVenta, estado: estadoDetalle,
+          vendedor: vendedor || null, nombre_comprador: nombreComprador || null,
           observaciones: observaciones || null,
-        })
-        .select('id')
-        .single();
-      if (ve) throw new Error(ve.message);
-      if (!venta) throw new Error('No se creó la venta');
+        }).eq('id', editandoDetalle.id);
+        if (ue) throw new Error(ue.message);
 
-      const { error: ie } = await supabase.from('items_venta_detalle').insert(
-        items.map((i) => ({
-          venta_id: venta.id,
-          producto_id: i.producto.id,
-          cantidad: i.cantidad,
-          precio_unitario: i.precioUnitario,
-        }))
-      );
-      if (ie) throw new Error(ie.message);
+        await supabase.from('items_venta_detalle').delete().eq('venta_id', editandoDetalle.id);
+        const { error: ie } = await supabase.from('items_venta_detalle').insert(
+          items.map((i) => ({ venta_id: editandoDetalle.id, producto_id: i.producto.id, cantidad: i.cantidad, precio_unitario: i.precioUnitario }))
+        );
+        if (ie) throw new Error(ie.message);
 
-      // El stock solo baja si la venta se registra ya como entregada/pagada
-      if (CONSUMEN_STOCK.includes(estadoDetalle)) {
-        await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad })), -1);
+        // Descontar stock de los items nuevos si el estado consume
+        if (CONSUMEN_STOCK.includes(estadoDetalle)) {
+          await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad })), -1);
+        }
+      } else {
+        const { data: venta, error: ve } = await supabase
+          .from('ventas_detalle')
+          .insert({
+            fecha,
+            total: totalVenta,
+            estado: estadoDetalle,
+            vendedor: vendedor || null,
+            nombre_comprador: nombreComprador || null,
+            observaciones: observaciones || null,
+          })
+          .select('id')
+          .single();
+        if (ve) throw new Error(ve.message);
+        if (!venta) throw new Error('No se creó la venta');
+
+        const { error: ie } = await supabase.from('items_venta_detalle').insert(
+          items.map((i) => ({
+            venta_id: venta.id,
+            producto_id: i.producto.id,
+            cantidad: i.cantidad,
+            precio_unitario: i.precioUnitario,
+          }))
+        );
+        if (ie) throw new Error(ie.message);
+
+        // El stock solo baja si la venta se registra ya como entregada/pagada
+        if (CONSUMEN_STOCK.includes(estadoDetalle)) {
+          await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad })), -1);
+        }
       }
 
       setItems([]);
+      setEditandoDetalle(null);
       setShowModal(false);
       await fetchVentasDetalle(inicioMes, finMes);
       const { data: p } = await supabase.from('productos').select('*').order('nombre');
       if (p) { setTodosProductos(p); setProductos(p); }
-      alert('✅ Venta al detalle registrada');
+      alert(editandoDetalle ? '✅ Venta al detalle actualizada' : '✅ Venta al detalle registrada');
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
@@ -581,7 +635,12 @@ export default function PedidosPage() {
                       {item.nombre} — {item.cantidad} u. · {fmt(item.precio_unitario)} c/u
                     </p>
                   ))}
-                  <div className="flex gap-2 mt-2 flex-wrap">
+                  <div className="flex gap-2 mt-2 flex-wrap items-center">
+                    <button onClick={() => abrirEditarDetalle(v)}
+                      className="text-xs px-2 py-1 rounded border"
+                      style={{ borderColor: '#2a2a2a', color: '#9ca3af', backgroundColor: '#1c1c1c' }}>
+                      ✏️ Editar
+                    </button>
                     {ESTADOS.filter((e) => e !== v.estado).map((e) => (
                       <button key={e} onClick={() => cambiarEstadoDetalle(v.id, e)}
                         className="text-xs px-2 py-1 rounded border"
@@ -673,13 +732,13 @@ export default function PedidosPage() {
           <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[90vh]" style={{ backgroundColor: '#141414' }}>
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>
-                {editandoPedido ? '✏️ Editar Pedido' : tipoModal === 'pedido' ? 'Nuevo Pedido' : tipoModal === 'evento' ? '🎪 Venta en Evento' : '🛒 Venta al Detalle'}
+                {editandoPedido ? '✏️ Editar Pedido' : editandoDetalle ? '✏️ Editar Venta al Detalle' : tipoModal === 'pedido' ? 'Nuevo Pedido' : tipoModal === 'evento' ? '🎪 Venta en Evento' : '🛒 Venta al Detalle'}
               </h2>
-              <button onClick={() => setShowModal(false)} style={{ color: '#6b7280' }}>✕</button>
+              <button onClick={() => { setShowModal(false); setEditandoDetalle(null); }} style={{ color: '#6b7280' }}>✕</button>
             </div>
 
             {/* Toggle tipo (solo en nuevo) */}
-            {!editandoPedido && (
+            {!editandoPedido && !editandoDetalle && (
               <div className="flex gap-2 mb-4">
                 {(['pedido', 'evento', 'detalle'] as const).map((t) => {
                   const colors: Record<string, string> = { pedido: '#e53935', evento: '#ff9800', detalle: '#9c27b0' };
@@ -994,7 +1053,7 @@ export default function PedidosPage() {
                 <button onClick={handleGuardarDetalle} disabled={saving || items.length === 0}
                   className="w-full py-3 rounded-lg font-bold text-white text-sm disabled:opacity-40"
                   style={{ backgroundColor: '#9c27b0' }}>
-                  {saving ? 'Guardando...' : '✅ REGISTRAR VENTA AL DETALLE'}
+                  {saving ? 'Guardando...' : editandoDetalle ? '✅ GUARDAR CAMBIOS' : '✅ REGISTRAR VENTA AL DETALLE'}
                 </button>
               </>
             )}
