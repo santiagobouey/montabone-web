@@ -249,19 +249,24 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Utilidad del lote destacada */}
+      {/* Lote actual: venta y utilidad */}
       {(() => {
         const util = stats?.utilidadLote ?? 0;
         const ventas = stats?.ventasLote ?? 0;
         const margen = ventas > 0 ? Math.round((util / ventas) * 100) : 0;
         const color = util > 0 ? '#4caf50' : util < 0 ? '#e53935' : '#6b7280';
         return (
-          <div className="rounded-xl border p-5 mb-4" style={{ backgroundColor: '#141414', borderColor: color + '60', borderLeftWidth: 4, borderLeftColor: color }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>💰 Utilidad del lote actual</p>
-            <p className="text-4xl font-extrabold" style={{ color }}>{fmt(util)}</p>
-            <p className="text-xs mt-1" style={{ color: '#6b7280' }}>
-              Ventas {fmt(ventas)} · Margen <span style={{ color }}>{margen}%</span>
-            </p>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <Link href="/ventas-mes" className="rounded-xl border p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#4caf50' + '60', borderLeftWidth: 4, borderLeftColor: '#4caf50' }}>
+              <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>📈 Venta del lote actual</p>
+              <p className="text-3xl md:text-4xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(ventas)}</p>
+              <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Total vendido</p>
+            </Link>
+            <Link href="/periodos" className="rounded-xl border p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: color + '60', borderLeftWidth: 4, borderLeftColor: color }}>
+              <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>💰 Utilidad del lote actual</p>
+              <p className="text-3xl md:text-4xl font-extrabold" style={{ color }}>{fmt(util)}</p>
+              <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Margen <span style={{ color }}>{margen}%</span></p>
+            </Link>
           </div>
         );
       })()}
