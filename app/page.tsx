@@ -53,6 +53,19 @@ export default function DashboardPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [loading, setLoading] = useState(true);
   const [verPuntos, setVerPuntos] = useState(false);
+  const [editStockId, setEditStockId] = useState<string | null>(null);
+  const [editStockVal, setEditStockVal] = useState('');
+  const [savingStock, setSavingStock] = useState(false);
+
+  async function guardarStock(id: string) {
+    const nuevo = editStockVal === '' ? 0 : parseFloat(editStockVal);
+    if (isNaN(nuevo)) return;
+    setSavingStock(true);
+    await supabase.from('productos').update({ stock: nuevo }).eq('id', id);
+    setProductos((prev) => prev.map((p) => p.id === id ? { ...p, stock: nuevo } : p));
+    setEditStockId(null);
+    setSavingStock(false);
+  }
 
   useEffect(() => {
     async function load() {
@@ -439,24 +452,42 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Stock actual */}
+      {/* Stock actual (editable) */}
       <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
         <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
-          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>📦 Stock Actual</p>
+          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>📦 Stock Actual <span style={{ color: '#4b5563', fontWeight: 400 }}>· toca para editar</span></p>
         </div>
         {productos.map((p, i) => {
           const color = p.stock === 0 ? '#e53935' : p.stock <= 10 ? '#ff9800' : '#4caf50';
+          const editando = editStockId === p.id;
           return (
             <div key={p.id} className="flex items-center justify-between px-4 py-3"
               style={{ borderBottom: i < productos.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
-              <div>
+              <div className="min-w-0">
                 <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{p.nombre}</p>
                 <p className="text-xs" style={{ color: '#6b7280' }}>{p.formato}</p>
               </div>
-              <div className="text-right">
-                <p className="text-xl font-extrabold" style={{ color }}>{p.stock}</p>
-                <p className="text-xs" style={{ color: '#6b7280' }}>uds</p>
-              </div>
+              {editando ? (
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <input type="number" value={editStockVal} autoFocus
+                    onChange={(e) => setEditStockVal(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') guardarStock(p.id); }}
+                    className="w-20 rounded-lg px-2 py-1.5 text-sm text-right border"
+                    style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+                  <button onClick={() => guardarStock(p.id)} disabled={savingStock}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold disabled:opacity-40"
+                    style={{ backgroundColor: '#4caf50' }}>✓</button>
+                  <button onClick={() => setEditStockId(null)}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center border"
+                    style={{ borderColor: '#2a2a2a', color: '#6b7280' }}>✕</button>
+                </div>
+              ) : (
+                <button onClick={() => { setEditStockId(p.id); setEditStockVal(String(p.stock)); }}
+                  className="text-right flex-shrink-0 px-2 py-1 rounded-lg transition-colors hover:brightness-125">
+                  <p className="text-xl font-extrabold" style={{ color }}>{p.stock} <span className="text-xs">✏️</span></p>
+                  <p className="text-xs" style={{ color: '#6b7280' }}>uds</p>
+                </button>
+              )}
             </div>
           );
         })}
