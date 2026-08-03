@@ -11,6 +11,7 @@ const nav = [
   { href: '/datos-clientes', label: 'Datos Clientes', icon: '📇' },
   { href: '/prospectos', label: 'Prospectos', icon: '🎯' },
   { href: '/ventas-mes', label: 'Venta Mensual', icon: '📈' },
+  { href: '/proyeccion', label: 'Proyección', icon: '🔮' },
   { href: '/ventas-eventos', label: 'Eventos', icon: '🎪' },
   { href: '/inventario', label: 'Inventario', icon: '🗃️' },
   { href: '/merma', label: 'Merma', icon: '📉' },
