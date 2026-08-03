@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
-const nav = [
+const NAV = [
   { href: '/', label: 'Inicio', icon: '🏠' },
   { href: '/pedidos', label: 'Pedidos', icon: '📦' },
   { href: '/clientes', label: 'Clientes', icon: '👥' },
@@ -24,8 +25,51 @@ const nav = [
   { href: '/reportes', label: 'Reportes', icon: '📊' },
 ];
 
+type NavItem = typeof NAV[number];
+const STORAGE_KEY = 'montabone_nav_orden';
+
+// Aplica el orden guardado y agrega ítems nuevos que no estén en él
+function aplicarOrden(guardado: string[]): NavItem[] {
+  const porHref = new Map(NAV.map((n) => [n.href, n]));
+  const ordenados: NavItem[] = [];
+  for (const href of guardado) {
+    const item = porHref.get(href);
+    if (item) { ordenados.push(item); porHref.delete(href); }
+  }
+  // Los que quedaron (nuevos) se agregan al final en su orden original
+  for (const n of NAV) if (porHref.has(n.href)) ordenados.push(n);
+  return ordenados;
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
+  const [items, setItems] = useState<NavItem[]>(NAV);
+  const [editando, setEditando] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setItems(aplicarOrden(JSON.parse(raw)));
+    } catch {}
+  }, []);
+
+  function guardar(nuevos: NavItem[]) {
+    setItems(nuevos);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevos.map((i) => i.href))); } catch {}
+  }
+
+  function mover(index: number, dir: -1 | 1) {
+    const destino = index + dir;
+    if (destino < 0 || destino >= items.length) return;
+    const copia = [...items];
+    [copia[index], copia[destino]] = [copia[destino], copia[index]];
+    guardar(copia);
+  }
+
+  function resetear() {
+    setItems(NAV);
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  }
 
   return (
     <>
@@ -37,9 +81,38 @@ export default function Sidebar() {
         <div className="p-4 border-b flex items-center justify-center" style={{ borderColor: '#2a2a2a' }}>
           <Image src="/logo.jpg" alt="Montabone" width={130} height={130} style={{ objectFit: 'contain', borderRadius: 8 }} />
         </div>
-        <nav className="flex-1 p-3 space-y-1">
-          {nav.map((item) => {
+
+        {/* Botón editar orden */}
+        <div className="px-3 pt-3 flex items-center justify-between">
+          <button onClick={() => setEditando(!editando)}
+            className="text-xs px-2 py-1 rounded border"
+            style={{ borderColor: editando ? '#e53935' : '#2a2a2a', color: editando ? '#e53935' : '#6b7280' }}>
+            {editando ? '✓ Listo' : '↕ Ordenar menú'}
+          </button>
+          {editando && (
+            <button onClick={resetear} className="text-xs px-2 py-1 rounded border" style={{ borderColor: '#2a2a2a', color: '#6b7280' }}>
+              Restaurar
+            </button>
+          )}
+        </div>
+
+        <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto">
+          {items.map((item, i) => {
             const active = pathname === item.href;
+            if (editando) {
+              return (
+                <div key={item.href} className="flex items-center gap-1 px-2 py-1.5 rounded-lg" style={{ backgroundColor: '#1c1c1c' }}>
+                  <span className="text-sm">{item.icon}</span>
+                  <span className="flex-1 text-sm truncate" style={{ color: '#9ca3af' }}>{item.label}</span>
+                  <button onClick={() => mover(i, -1)} disabled={i === 0}
+                    className="w-6 h-6 rounded flex items-center justify-center text-xs disabled:opacity-20"
+                    style={{ backgroundColor: '#2a2a2a', color: '#f5f5f5' }}>▲</button>
+                  <button onClick={() => mover(i, 1)} disabled={i === items.length - 1}
+                    className="w-6 h-6 rounded flex items-center justify-center text-xs disabled:opacity-20"
+                    style={{ backgroundColor: '#2a2a2a', color: '#f5f5f5' }}>▼</button>
+                </div>
+              );
+            }
             return (
               <Link
                 key={item.href}
@@ -64,7 +137,7 @@ export default function Sidebar() {
         className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t flex"
         style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}
       >
-        {nav.slice(0, 5).map((item) => {
+        {items.slice(0, 5).map((item) => {
           const active = pathname === item.href;
           return (
             <Link
