@@ -57,7 +57,7 @@ export default function CobrosPage() {
       const { data } = await supabase
         .from('pedidos')
         .select('*, cliente:clientes(nombre), detalle:detalle_pedido(*, producto:productos(nombre))')
-        .in('estado', ['pendiente', 'preparado', 'entregado'])
+        .eq('estado', 'entregado')
         .order('fecha', { ascending: false });
       setPedidos(data || []);
     } catch {}
@@ -89,7 +89,7 @@ export default function CobrosPage() {
       const { data } = await supabase
         .from('ventas_detalle')
         .select('id, fecha, total, estado, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
-        .in('estado', ['pendiente', 'preparado', 'entregado'])
+        .eq('estado', 'entregado')
         .order('fecha', { ascending: false });
       if (data) setVentasDetalle(mapVentas(data));
     } catch {}
@@ -169,21 +169,29 @@ export default function CobrosPage() {
               <p className="text-xs font-bold uppercase" style={{ color: '#6b7280' }}>Total por cobrar</p>
               <p className="text-3xl font-extrabold" style={{ color: '#f5f5f5' }}>{fmt(totalGeneral)}</p>
               <div className="flex gap-3 mt-1">
-                {totalPedidos > 0 && <p className="text-xs" style={{ color: '#6b7280' }}>Pedidos: {fmt(totalPedidos)}</p>}
-                {totalDetalle > 0 && <p className="text-xs" style={{ color: '#9c27b0' }}>Detalle: {fmt(totalDetalle)}</p>}
+                <p className="text-xs" style={{ color: '#6b7280' }}>👥 Clientes: {fmt(totalPedidos)}</p>
+                <p className="text-xs" style={{ color: '#9c27b0' }}>🛒 Detalle: {fmt(totalDetalle)}</p>
               </div>
             </div>
             <span className="text-4xl">💰</span>
           </div>
 
+          <p className="text-xs mb-3 p-2 rounded-lg" style={{ backgroundColor: '#4caf5015', color: '#6b7280' }}>
+            Aquí aparecen las ventas <span style={{ color: '#4caf50', fontWeight: 700 }}>entregadas</span> que aún no te han pagado.
+          </p>
+
           {pedidos.length === 0 && ventasDetalle.length === 0 ? (
             <div className="text-center py-16">
               <p className="text-4xl mb-3">✅</p>
               <p className="font-bold" style={{ color: '#f5f5f5' }}>¡Todo cobrado!</p>
-              <p className="text-sm" style={{ color: '#6b7280' }}>No hay cuentas pendientes</p>
+              <p className="text-sm" style={{ color: '#6b7280' }}>No hay ventas entregadas sin pagar</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-5">
+              {pedidos.length > 0 && (
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#e53935' }}>👥 Clientes ({pedidos.length}) · {fmt(totalPedidos)}</p>
+              )}
+              <div className="space-y-3">
               {pedidos.map((p) => {
                 const color = ESTADO_COLORS[p.estado] || '#6b7280';
                 const neto = Math.round(p.total / 1.19);
@@ -221,7 +229,12 @@ export default function CobrosPage() {
                   </div>
                 );
               })}
+              </div>
 
+              {ventasDetalle.length > 0 && (
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#9c27b0' }}>🛒 Al detalle ({ventasDetalle.length}) · {fmt(totalDetalle)}</p>
+              )}
+              <div className="space-y-3">
               {ventasDetalle.map((v) => {
                 const color = ESTADO_COLORS[v.estado] || '#6b7280';
                 return (
@@ -255,6 +268,7 @@ export default function CobrosPage() {
                   </div>
                 );
               })}
+              </div>
             </div>
           )}
         </>
