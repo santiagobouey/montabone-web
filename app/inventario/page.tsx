@@ -162,11 +162,20 @@ export default function InventarioPage() {
 
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha Ingreso</label>
-                <input type="date" value={fechaIngreso} onChange={(e) => setFechaIngreso(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha de Elaboración</label>
+                <input type="date" value={fechaIngreso} onChange={(e) => {
+                  const val = e.target.value;
+                  setFechaIngreso(val);
+                  // Vence automáticamente 60 días después de la elaboración
+                  if (val) {
+                    const d = new Date(val + 'T12:00:00');
+                    d.setDate(d.getDate() + 60);
+                    setFechaVencimiento(d.toISOString().split('T')[0]);
+                  }
+                }} className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha Vencimiento</label>
+                <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha Vencimiento <span style={{ color: '#4b5563', fontWeight: 400 }}>(auto +60 días)</span></label>
                 <input type="date" value={fechaVencimiento} onChange={(e) => setFechaVencimiento(e.target.value)} className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
               </div>
             </div>
