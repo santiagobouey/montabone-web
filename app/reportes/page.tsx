@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 interface ReporteData {
   ventasTotales: number;
@@ -16,13 +17,17 @@ interface ReporteData {
 export default function ReportesPage() {
   const [data, setData] = useState<ReporteData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [mes, setMes] = useState(() => new Date().toISOString().slice(0, 7));
+  const hoyDate = new Date();
+  const [mesFiltro, setMesFiltro] = useState(hoyDate.getMonth());
+  const [anioFiltro, setAnioFiltro] = useState(hoyDate.getFullYear());
+  const [showSelectorMes, setShowSelectorMes] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
-        const inicio = `${mes}-01`;
-        const fin = `${mes}-31`;
+        const inicio = `${anioFiltro}-${String(mesFiltro + 1).padStart(2, '0')}-01`;
+        const ultimoDia = new Date(anioFiltro, mesFiltro + 1, 0).getDate();
+        const fin = `${anioFiltro}-${String(mesFiltro + 1).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
         const { data: pedidos } = await supabase
           .from('pedidos')
           .select('*, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))')
@@ -54,16 +59,49 @@ export default function ReportesPage() {
       setLoading(false);
     }
     load();
-  }, [mes]);
+  }, [mesFiltro, anioFiltro]);
 
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Reportes</h1>
-        <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="mt-2 rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
       </div>
+
+      {/* Selector de mes */}
+      <button onClick={() => setShowSelectorMes(!showSelectorMes)}
+        className="w-full flex items-center justify-between rounded-xl border px-4 py-3 mb-4"
+        style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+        <p className="font-bold" style={{ color: '#f5f5f5' }}>📅 {MESES[mesFiltro]} {anioFiltro}</p>
+        <span style={{ color: '#6b7280' }}>{showSelectorMes ? '▲' : '▼'}</span>
+      </button>
+      {showSelectorMes && (
+        <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={() => setAnioFiltro(anioFiltro - 1)} className="w-8 h-8 rounded-lg border" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>‹</button>
+            <p className="font-bold" style={{ color: '#f5f5f5' }}>{anioFiltro}</p>
+            <button onClick={() => setAnioFiltro(anioFiltro + 1)} disabled={anioFiltro >= hoyDate.getFullYear()}
+              className="w-8 h-8 rounded-lg border disabled:opacity-30" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>›</button>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {MESES.map((m, i) => {
+              const esFuturo = anioFiltro === hoyDate.getFullYear() && i > hoyDate.getMonth();
+              return (
+                <button key={m} onClick={() => { if (!esFuturo) { setMesFiltro(i); setShowSelectorMes(false); } }} disabled={esFuturo}
+                  className="py-2 rounded-lg text-xs font-semibold border disabled:opacity-30"
+                  style={{
+                    borderColor: mesFiltro === i ? '#e53935' : '#2a2a2a',
+                    backgroundColor: mesFiltro === i ? '#e5393520' : 'transparent',
+                    color: mesFiltro === i ? '#e53935' : '#9ca3af',
+                  }}>
+                  {m.slice(0, 3)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         {[
