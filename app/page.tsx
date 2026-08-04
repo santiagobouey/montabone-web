@@ -41,6 +41,7 @@ interface Stats {
   pedidosPendientes: number;
   totalPorCobrar: number;
   stockBajo: Producto[];
+  porVencer: { nombre: string; fecha: string; dias: number; stock: number }[];
   prospectosParaInsistir: { id: string; nombre_local: string; nombre_contacto: string }[];
   seguimientosMuestras: { local: string; productos: string }[];
   // Muestras
@@ -183,6 +184,16 @@ export default function DashboardPage() {
         }
         const productoMasVendido = Object.entries(unidadesPorProducto).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '—';
 
+        // Productos por vencer (vencen dentro de 15 días o ya vencidos, con stock)
+        const en15 = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const porVencer = prods
+          .filter((p) => p.fecha_vencimiento && p.stock > 0 && p.fecha_vencimiento <= en15)
+          .map((p) => {
+            const dias = Math.round((new Date(p.fecha_vencimiento + 'T12:00:00').getTime() - new Date(hoyStr + 'T12:00:00').getTime()) / (24 * 60 * 60 * 1000));
+            return { nombre: p.nombre, fecha: p.fecha_vencimiento as string, dias, stock: p.stock };
+          })
+          .sort((a, b) => a.dias - b.dias);
+
         // Puntos de venta
         const ultimaCompraMap: Record<string, string> = {};
         for (const p of pedidosCliente) {
@@ -232,6 +243,7 @@ export default function DashboardPage() {
           pedidosPendientes: (pedidosPendientesRes.data?.length || 0) + (detallePendienteRes.data?.length || 0),
           totalPorCobrar: (cobroRes.data || []).reduce((s, p) => s + p.total, 0) + (detalleCobrarRes.data || []).reduce((s, v) => s + v.total, 0),
           stockBajo: prods.filter((p) => p.stock <= 10),
+          porVencer,
           prospectosParaInsistir: (prospectoRes.data || []).filter((p: any) => p.proxima_visita && p.proxima_visita <= hoyStr),
           seguimientosMuestras,
           totalMuestras: muestrasData.reduce((s, m) => s + (m.cantidad || 0), 0),
@@ -397,6 +409,30 @@ export default function DashboardPage() {
               📞 <span className="font-semibold">{p.nombre_local}</span> — {p.nombre_contacto}
             </p>
           ))}
+        </div>
+      )}
+
+      {/* Productos por vencer */}
+      {(stats?.porVencer.length ?? 0) > 0 && (
+        <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#ff980015', borderColor: '#ff9800' + '60', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#ff9800' }}>⏰ Por Vencer</p>
+          <div className="space-y-2">
+            {stats!.porVencer.map((p, i) => {
+              const vencido = p.dias < 0;
+              const col = vencido ? '#e53935' : p.dias <= 5 ? '#ff9800' : '#f5f5f5';
+              return (
+                <div key={i} className="flex justify-between items-center">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{p.nombre} <span style={{ color: '#6b7280', fontWeight: 400 }}>· {p.stock} uds</span></p>
+                    <p className="text-xs" style={{ color: '#6b7280' }}>Vence {new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</p>
+                  </div>
+                  <span className="text-sm font-bold flex-shrink-0" style={{ color: col }}>
+                    {vencido ? `Vencido hace ${Math.abs(p.dias)}d` : p.dias === 0 ? 'Vence hoy' : `en ${p.dias}d`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
