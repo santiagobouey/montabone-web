@@ -29,6 +29,8 @@ const NAV = [
 
 type NavItem = typeof NAV[number];
 const STORAGE_KEY = 'montabone_nav_orden';
+// Debe coincidir con LOGIN_ACTIVO en AuthGate.tsx
+const LOGIN_ACTIVO = false;
 
 // Aplica el orden guardado y agrega ítems nuevos que no estén en él
 function aplicarOrden(guardado: string[]): NavItem[] {
@@ -134,13 +136,15 @@ export default function Sidebar() {
         </nav>
 
         {/* Cerrar sesión */}
-        <div className="p-3 border-t" style={{ borderColor: '#2a2a2a' }}>
-          <button onClick={() => supabase.auth.signOut()}
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium"
-            style={{ color: '#6b7280' }}>
-            <span>🚪</span><span>Cerrar sesión</span>
-          </button>
-        </div>
+        {LOGIN_ACTIVO && (
+          <div className="p-3 border-t" style={{ borderColor: '#2a2a2a' }}>
+            <button onClick={() => supabase.auth.signOut()}
+              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium"
+              style={{ color: '#6b7280' }}>
+              <span>🚪</span><span>Cerrar sesión</span>
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* Bottom nav mobile */}

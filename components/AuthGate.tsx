@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 
+// 🔑 Interruptor del login. Poner en true para exigir clave; false para desactivarlo temporalmente.
+const LOGIN_ACTIVO = false;
+
 export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [estado, setEstado] = useState<'cargando' | 'dentro' | 'fuera'>('cargando');
   const [email, setEmail] = useState('');
@@ -12,6 +15,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!LOGIN_ACTIVO) { setEstado('dentro'); return; }
     supabase.auth.getSession().then(({ data }) => setEstado(data.session ? 'dentro' : 'fuera'));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       setEstado(session ? 'dentro' : 'fuera');
