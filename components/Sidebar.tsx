@@ -23,6 +23,7 @@ const NAV = [
   { href: '/periodos', label: 'Períodos', icon: '🔒' },
   { href: '/tareas', label: 'Pendientes', icon: '✅' },
   { href: '/reportes', label: 'Reportes', icon: '📊' },
+  { href: '/respaldo', label: 'Respaldo', icon: '💾' },
 ];
 
 type NavItem = typeof NAV[number];
