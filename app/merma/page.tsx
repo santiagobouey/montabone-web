@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 
-type Motivo = 'devolucion' | 'degustacion' | 'muestra' | 'muestra_influencer';
+type Motivo = 'devolucion' | 'degustacion' | 'muestra' | 'muestra_influencer' | 'cambio';
 
 interface ProductoOpt {
   id: string;
@@ -42,6 +42,7 @@ const MOTIVOS: { key: Motivo; label: string; color: string }[] = [
   { key: 'degustacion', label: '🍴 Degustación', color: '#ff9800' },
   { key: 'muestra', label: '🎁 Muestra a local', color: '#9c27b0' },
   { key: 'muestra_influencer', label: '📣 Muestra a influencer', color: '#2196f3' },
+  { key: 'cambio', label: '🔄 Cambio', color: '#00bcd4' },
 ];
 
 export default function MermaPage() {
@@ -197,6 +198,7 @@ export default function MermaPage() {
   const totalDegustacion = mermas.filter((m) => m.motivo === 'degustacion');
   const totalMuestra = mermas.filter((m) => m.motivo === 'muestra');
   const totalMuestraInf = mermas.filter((m) => m.motivo === 'muestra_influencer');
+  const totalCambio = mermas.filter((m) => m.motivo === 'cambio');
   const totalUnidades = items.reduce((s, i) => s + i.cantidad, 0);
   const colorMotivo = MOTIVOS.find((x) => x.key === motivo)!.color;
 
@@ -281,6 +283,7 @@ export default function MermaPage() {
           { label: '🍴 Degustaciones', lista: totalDegustacion, color: '#ff9800' },
           { label: '🎁 Muestras a locales', lista: totalMuestra, color: '#9c27b0' },
           { label: '📣 Muestras a influencer', lista: totalMuestraInf, color: '#2196f3' },
+          { label: '🔄 Cambios', lista: totalCambio, color: '#00bcd4' },
         ].map((t) => (
           <div key={t.label} className="rounded-xl border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: t.color }}>
             <p className="text-xs" style={{ color: '#6b7280' }}>{t.label}</p>
