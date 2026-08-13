@@ -30,6 +30,7 @@ interface InformeDetalle {
   totalPedidos: number;
   totalDetalle: number;
   totalEventos: number;
+  totalMayor: number;
   productosVendidos: ProductoVendido[];
   clientesActivos: ClienteEstado[];
   clientesInactivos: ClienteEstado[];
@@ -53,18 +54,20 @@ export default function PeriodosPage() {
   }, []);
 
   const fetchStatsActuales = useCallback(async () => {
-    const [pedidosRes, detalleRes, eventosRes, facturasRes] = await Promise.all([
+    const [pedidosRes, detalleRes, eventosRes, facturasRes, mayorRes] = await Promise.all([
       supabase.from('pedidos').select('total').is('periodo_id', null),
       supabase.from('ventas_detalle').select('total').is('periodo_id', null),
       supabase.from('ventas_evento').select('total').is('periodo_id', null),
       supabase.from('costos_factura').select('monto').is('periodo_id', null),
+      supabase.from('ventas_mayor').select('total, costo').is('periodo_id', null),
     ]);
     const pedidos = pedidosRes.data || [];
     const detalle = detalleRes.data || [];
     const eventos = eventosRes.data || [];
     const facturas = facturasRes.data || [];
-    const ventas = [...pedidos, ...detalle, ...eventos].reduce((s, x) => s + x.total, 0);
-    const costos = facturas.reduce((s, f) => s + f.monto, 0);
+    const mayor = mayorRes.data || [];
+    const ventas = [...pedidos, ...detalle, ...eventos].reduce((s, x) => s + x.total, 0) + mayor.reduce((s, x) => s + x.total, 0);
+    const costos = facturas.reduce((s, f) => s + f.monto, 0) + mayor.reduce((s, x) => s + x.costo, 0);
     setStatsActuales({ ventas, pedidos: pedidos.length, costos, utilidad: ventas - costos });
   }, []);
 
@@ -76,24 +79,26 @@ export default function PeriodosPage() {
     if (!nombre) return;
     setCerrando(true);
     try {
-      const [pedidosRes, detalleRes, eventosRes, facturasRes] = await Promise.all([
+      const [pedidosRes, detalleRes, eventosRes, facturasRes, mayorRes] = await Promise.all([
         supabase.from('pedidos').select('id, total, fecha, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').is('periodo_id', null),
         supabase.from('ventas_detalle').select('id, total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').is('periodo_id', null),
         supabase.from('ventas_evento').select('id, total, cantidad, precio_unitario, producto:productos(nombre, costo)').is('periodo_id', null),
         supabase.from('costos_factura').select('id, monto').is('periodo_id', null),
+        supabase.from('ventas_mayor').select('id, total, costo').is('periodo_id', null),
       ]);
 
       const pedidos = (pedidosRes.data || []) as any[];
       const detalle = (detalleRes.data || []) as any[];
       const eventos = (eventosRes.data || []) as any[];
       const facturas = (facturasRes.data || []) as any[];
+      const mayor = (mayorRes.data || []) as any[];
 
-      const totalVentas = [...pedidos, ...detalle, ...eventos].reduce((s, x) => s + x.total, 0);
+      const totalVentas = [...pedidos, ...detalle, ...eventos].reduce((s, x) => s + x.total, 0) + mayor.reduce((s, x) => s + x.total, 0);
       const totalPedidosVentas = pedidos.reduce((s: number, x: any) => s + x.total, 0);
       const totalDetalleVentas = detalle.reduce((s: number, x: any) => s + x.total, 0);
 
-      // Utilidad = ventas - facturas (costos) del período
-      const totalCosto = facturas.reduce((s: number, f: any) => s + f.monto, 0);
+      // Utilidad = ventas - costos (facturas + costo de ventas por mayor) del período
+      const totalCosto = facturas.reduce((s: number, f: any) => s + f.monto, 0) + mayor.reduce((s, x) => s + x.costo, 0);
       const totalUtilidad = totalVentas - totalCosto;
 
       const totalTransacciones = pedidos.length + detalle.length + eventos.length;
@@ -123,6 +128,7 @@ export default function PeriodosPage() {
         detalle.length > 0 && supabase.from('ventas_detalle').update({ periodo_id: periodoId }).in('id', detalle.map((v: any) => v.id)),
         eventos.length > 0 && supabase.from('ventas_evento').update({ periodo_id: periodoId }).in('id', eventos.map((v: any) => v.id)),
         facturas.length > 0 && supabase.from('costos_factura').update({ periodo_id: periodoId }).in('id', facturas.map((f: any) => f.id)),
+        mayor.length > 0 && supabase.from('ventas_mayor').update({ periodo_id: periodoId }).in('id', mayor.map((v: any) => v.id)),
       ]);
 
       // Ventas por cliente (pedidos)
@@ -196,7 +202,8 @@ export default function PeriodosPage() {
       setNombre(''); setResetearStock(false); setShowModal(false);
       await Promise.all([fetchPeriodos(), fetchStatsActuales()]);
       const totalEventosVentas = eventos.reduce((s: number, x: any) => s + x.total, 0);
-      setInforme({ periodo, ventasClientes, ventasDetalleCli, totalPedidos: totalPedidosVentas, totalDetalle: totalDetalleVentas, totalEventos: totalEventosVentas, productosVendidos, clientesActivos: clientesActivos2, clientesInactivos: clientesInactivos2 });
+      const totalMayorVentas = mayor.reduce((s: number, x: any) => s + x.total, 0);
+      setInforme({ periodo, ventasClientes, ventasDetalleCli, totalPedidos: totalPedidosVentas, totalDetalle: totalDetalleVentas, totalEventos: totalEventosVentas, totalMayor: totalMayorVentas, productosVendidos, clientesActivos: clientesActivos2, clientesInactivos: clientesInactivos2 });
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
     }
@@ -211,6 +218,7 @@ export default function PeriodosPage() {
         supabase.from('ventas_detalle').update({ periodo_id: null }).eq('periodo_id', p.id),
         supabase.from('ventas_evento').update({ periodo_id: null }).eq('periodo_id', p.id),
         supabase.from('costos_factura').update({ periodo_id: null }).eq('periodo_id', p.id),
+        supabase.from('ventas_mayor').update({ periodo_id: null }).eq('periodo_id', p.id),
       ]);
       await supabase.from('periodos').delete().eq('id', p.id);
       setInforme(null); setShowReabrirModal(false);
@@ -222,16 +230,18 @@ export default function PeriodosPage() {
   }
 
   async function verInforme(p: Periodo) {
-    const [pedidosRes, detalleRes, eventosRes, clientesRes, todosPedidosRes] = await Promise.all([
+    const [pedidosRes, detalleRes, eventosRes, clientesRes, todosPedidosRes, mayorRes] = await Promise.all([
       supabase.from('pedidos').select('total, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))').eq('periodo_id', p.id),
       supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))').eq('periodo_id', p.id),
       supabase.from('ventas_evento').select('total, cantidad, precio_unitario, producto:productos(nombre)').eq('periodo_id', p.id),
       supabase.from('clientes').select('id, nombre, tipo, activo_manual'),
       supabase.from('pedidos').select('cliente_id, fecha').eq('periodo_id', p.id).order('fecha', { ascending: false }),
+      supabase.from('ventas_mayor').select('total').eq('periodo_id', p.id),
     ]);
     const pedidos = (pedidosRes.data || []) as any[];
     const detalle = (detalleRes.data || []) as any[];
     const eventos = (eventosRes.data || []) as any[];
+    const mayor = (mayorRes.data || []) as any[];
 
     const clienteMap: Record<string, VentaCliente> = {};
     for (const ped of pedidos) {
@@ -287,6 +297,7 @@ export default function PeriodosPage() {
       totalPedidos: pedidos.reduce((s, x) => s + x.total, 0),
       totalDetalle: detalle.reduce((s, x) => s + x.total, 0),
       totalEventos: eventos.reduce((s, x) => s + x.total, 0),
+      totalMayor: mayor.reduce((s, x) => s + x.total, 0),
       productosVendidos: Object.values(prodMap).sort((a, b) => b.unidades - a.unidades),
       clientesActivos: clientesActivos.sort((a, b) => a.nombre.localeCompare(b.nombre)),
       clientesInactivos: clientesInactivos.sort((a, b) => a.nombre.localeCompare(b.nombre)),
@@ -294,7 +305,7 @@ export default function PeriodosPage() {
   }
 
   function descargarPDF(inf: InformeDetalle) {
-    const { periodo: p, ventasClientes, ventasDetalleCli, totalPedidos, totalDetalle, totalEventos, productosVendidos } = inf;
+    const { periodo: p, ventasClientes, ventasDetalleCli, totalPedidos, totalDetalle, totalEventos, totalMayor, productosVendidos } = inf;
     const margen = p.total_ventas > 0 ? Math.round((p.total_utilidad / p.total_ventas) * 100) : 0;
     const totalCostoPDF = p.total_ventas - p.total_utilidad;
 
@@ -344,6 +355,7 @@ export default function PeriodosPage() {
       { label: 'Pedidos a clientes', value: totalPedidos, color: '#e53935' },
       { label: 'Venta al detalle', value: totalDetalle, color: '#9c27b0' },
       { label: 'Eventos', value: totalEventos, color: '#ff9800' },
+      { label: 'Venta por mayor', value: totalMayor, color: '#00bcd4' },
     ]);
 
     const colores = ['#e53935','#ff9800','#4caf50','#2196f3','#9c27b0','#00bcd4'];
@@ -495,7 +507,7 @@ export default function PeriodosPage() {
   }
 
   if (informe) {
-    const { periodo: p, ventasClientes, ventasDetalleCli, totalPedidos, totalDetalle, totalEventos } = informe;
+    const { periodo: p, ventasClientes, ventasDetalleCli, totalPedidos, totalDetalle, totalEventos, totalMayor } = informe;
     const margen = p.total_ventas > 0 ? Math.round((p.total_utilidad / p.total_ventas) * 100) : 0;
     const totalCosto = p.total_ventas - p.total_utilidad;
     return (
@@ -546,6 +558,7 @@ export default function PeriodosPage() {
               { label: 'Pedidos a clientes', value: totalPedidos, color: '#e53935' },
               { label: 'Venta al detalle', value: totalDetalle, color: '#9c27b0' },
               { label: 'Eventos', value: totalEventos, color: '#ff9800' },
+              { label: 'Venta por mayor', value: totalMayor, color: '#00bcd4' },
             ].filter(s => s.value > 0)} />
           </div>
         </div>

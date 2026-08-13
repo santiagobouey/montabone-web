@@ -97,6 +97,7 @@ export default function DashboardPage() {
           detalleLoteRes,
           eventosLoteRes,
           facturasLoteRes,
+          mayorLoteRes,
           seguimientosRes,
         ] = await Promise.all([
           supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
@@ -119,6 +120,7 @@ export default function DashboardPage() {
           supabase.from('ventas_detalle').select('total').is('periodo_id', null),
           supabase.from('ventas_evento').select('total').is('periodo_id', null),
           supabase.from('costos_factura').select('monto').is('periodo_id', null),
+          supabase.from('ventas_mayor').select('total, costo').is('periodo_id', null),
           supabase.from('mermas').select('destino_nombre, seguimiento_fecha, producto:productos(nombre)').eq('motivo', 'muestra').eq('seguimiento_hecho', false).not('seguimiento_fecha', 'is', null).lte('seguimiento_fecha', hoyStr),
         ]);
 
@@ -141,11 +143,15 @@ export default function DashboardPage() {
         const utilidadMes = ventasMes - facturasMes;
 
         // Utilidad del LOTE actual (período sin cerrar) = ventas del lote - facturas del lote
+        const mayorLote = (mayorLoteRes.data || []) as any[];
         const ventasLote =
           ((pedidosLoteRes.data || []) as any[]).reduce((s, x) => s + x.total, 0) +
           ((detalleLoteRes.data || []) as any[]).reduce((s, x) => s + x.total, 0) +
-          ((eventosLoteRes.data || []) as any[]).reduce((s, x) => s + x.total, 0);
-        const costosLote = ((facturasLoteRes.data || []) as any[]).reduce((s, f) => s + f.monto, 0);
+          ((eventosLoteRes.data || []) as any[]).reduce((s, x) => s + x.total, 0) +
+          mayorLote.reduce((s, x) => s + x.total, 0);
+        const costosLote =
+          ((facturasLoteRes.data || []) as any[]).reduce((s, f) => s + f.monto, 0) +
+          mayorLote.reduce((s, x) => s + x.costo, 0);
         const utilidadLote = ventasLote - costosLote;
 
         // Desglose por estado (pedidos a locales y ventas al detalle del mes)

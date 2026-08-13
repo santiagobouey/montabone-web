@@ -13,6 +13,7 @@ const NAV = [
   { href: '/datos-clientes', label: 'Datos Clientes', icon: '📇' },
   { href: '/estado-cuenta', label: 'Estado de Cuenta', icon: '🧾' },
   { href: '/prospectos', label: 'Prospectos', icon: '🎯' },
+  { href: '/venta-mayor', label: 'Venta por Mayor', icon: '⚖️' },
   { href: '/ventas-mes', label: 'Venta Mensual', icon: '📈' },
   { href: '/proyeccion', label: 'Proyección', icon: '🔮' },
   { href: '/ventas-eventos', label: 'Eventos', icon: '🎪' },
