@@ -10,22 +10,33 @@ interface FacturaCosto {
   monto: number;
   neto: number;
   iva: number;
+  proveedor: string | null;
   descripcion: string | null;
+  archivo_url: string | null;
+  archivo_nombre: string | null;
   created_at: string;
 }
 
-export default function CostosPage() {
+export default function ProveedoresPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [guardado, setGuardado] = useState(false);
   const [neto, setNeto] = useState('');
+  const [proveedor, setProveedor] = useState('');
+  const [proveedorNuevo, setProveedorNuevo] = useState(false);
   const [descripcion, setDescripcion] = useState('');
+  const [archivo, setArchivo] = useState<File | null>(null);
   const [historial, setHistorial] = useState<FacturaCosto[]>([]);
+  const [proveedores, setProveedores] = useState<{ id: string; nombre: string }[]>([]);
   const [facturaAEliminar, setFacturaAEliminar] = useState<FacturaCosto | null>(null);
 
   const fetchDatos = useCallback(async () => {
-    const { data } = await supabase.from('costos_factura').select('id, monto, neto, iva, descripcion, created_at').is('periodo_id', null).order('created_at', { ascending: false });
-    setHistorial((data || []) as FacturaCosto[]);
+    const [cRes, pRes] = await Promise.all([
+      supabase.from('costos_factura').select('id, monto, neto, iva, proveedor, descripcion, archivo_url, archivo_nombre, created_at').is('periodo_id', null).order('created_at', { ascending: false }),
+      supabase.from('proveedores').select('id, nombre').order('nombre'),
+    ]);
+    setHistorial((cRes.data || []) as FacturaCosto[]);
+    setProveedores(pRes.data || []);
   }, []);
 
   useEffect(() => { fetchDatos().finally(() => setLoading(false)); }, [fetchDatos]);
@@ -39,8 +50,29 @@ export default function CostosPage() {
     if (netoNum <= 0) return;
     setSaving(true);
     try {
-      await supabase.from('costos_factura').insert({ monto: totalNum, neto: netoNum, iva: ivaNum, descripcion: descripcion || null });
-      setNeto(''); setDescripcion('');
+      let archivoUrl: string | null = null;
+      let archivoNombre: string | null = null;
+      if (archivo) {
+        const ext = archivo.name.split('.').pop();
+        const path = `proveedores/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: upErr } = await supabase.storage.from('facturas').upload(path, archivo);
+        if (upErr) throw upErr;
+        archivoUrl = supabase.storage.from('facturas').getPublicUrl(path).data.publicUrl;
+        archivoNombre = archivo.name;
+      }
+
+      await supabase.from('costos_factura').insert({
+        monto: totalNum, neto: netoNum, iva: ivaNum,
+        proveedor: proveedor.trim() || null, descripcion: descripcion || null,
+        archivo_url: archivoUrl, archivo_nombre: archivoNombre,
+      });
+
+      // Guardar proveedor nuevo para reutilizarlo
+      if (proveedor.trim() && !proveedores.some((p) => p.nombre.toLowerCase() === proveedor.trim().toLowerCase())) {
+        await supabase.from('proveedores').insert({ nombre: proveedor.trim() });
+      }
+
+      setNeto(''); setProveedor(''); setProveedorNuevo(false); setDescripcion(''); setArchivo(null);
       await fetchDatos();
       setGuardado(true);
       setTimeout(() => setGuardado(false), 2500);
@@ -62,20 +94,37 @@ export default function CostosPage() {
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Costos</h1>
-        <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Ingresa lo que pagaste en facturas. La utilidad = ventas − costos.</p>
+        <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Proveedores</h1>
+        <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Sube las facturas de tus proveedores. Cuentan como costo (utilidad = ventas − costos).</p>
       </div>
 
       {/* Total pagado */}
       <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderLeftWidth: 4, borderColor: '#2a2a2a', borderLeftColor: '#e53935' }}>
-        <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>🧾 Total pagado (período actual)</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>🧾 Total en costos (período actual)</p>
         <p className="text-3xl font-extrabold" style={{ color: '#e53935' }}>{fmt(totalPagado)}</p>
-        <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{historial.length} factura{historial.length !== 1 ? 's' : ''} registrada{historial.length !== 1 ? 's' : ''}</p>
+        <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{historial.length} factura{historial.length !== 1 ? 's' : ''} de proveedor</p>
       </div>
 
       {/* Formulario nueva factura */}
       <div className="rounded-xl border p-4 mb-6" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
-        <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6b7280' }}>➕ Ingresar factura</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6b7280' }}>➕ Factura de proveedor</p>
+
+        <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Proveedor</label>
+        {!proveedorNuevo ? (
+          <select value={proveedores.some((p) => p.nombre === proveedor) ? proveedor : ''}
+            onChange={(e) => { if (e.target.value === '__nuevo__') { setProveedorNuevo(true); setProveedor(''); } else setProveedor(e.target.value); }}
+            className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: proveedor ? '#f5f5f5' : '#6b7280' }}>
+            <option value="">— Seleccionar proveedor —</option>
+            {proveedores.map((p) => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+            <option value="__nuevo__">➕ Nuevo proveedor...</option>
+          </select>
+        ) : (
+          <div className="flex gap-2 mb-3">
+            <input value={proveedor} onChange={(e) => setProveedor(e.target.value)} autoFocus placeholder="Nombre del proveedor"
+              className="flex-1 min-w-0 rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#4caf50', color: '#f5f5f5' }} />
+            <button onClick={() => { setProveedorNuevo(false); setProveedor(''); }} className="px-3 rounded-lg border text-xs flex-shrink-0" style={{ borderColor: '#2a2a2a', color: '#6b7280' }}>Lista</button>
+          </div>
+        )}
 
         <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Monto neto</label>
         <div className="flex items-center gap-2 mb-3">
@@ -101,8 +150,13 @@ export default function CostosPage() {
         </div>
 
         <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Descripción (opcional)</label>
-        <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="ej: Producción chorizos, insumos..."
-          className="w-full rounded-lg px-3 py-2 text-sm border mb-4" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+        <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="ej: Insumos, carne, envases..."
+          className="w-full rounded-lg px-3 py-2 text-sm border mb-3" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+        <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Factura (PDF o foto, opcional)</label>
+        <input type="file" accept="image/*,application/pdf" onChange={(e) => setArchivo(e.target.files?.[0] || null)} className="w-full text-sm mb-1" style={{ color: '#9ca3af' }} />
+        {archivo && <p className="text-xs mb-3" style={{ color: '#4caf50' }}>✓ {archivo.name}</p>}
+        {!archivo && <div className="mb-3" />}
 
         <button onClick={guardar} disabled={saving || netoNum <= 0}
           className="w-full py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40"
@@ -118,13 +172,16 @@ export default function CostosPage() {
             <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>📋 Facturas del período actual</p>
           </div>
           {historial.map((f, i) => (
-            <div key={f.id} className="flex items-center justify-between px-4 py-3" style={{ borderBottom: i < historial.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+            <div key={f.id} className="flex items-center justify-between px-4 py-3 gap-2" style={{ borderBottom: i < historial.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
               <div className="min-w-0">
-                <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{fmt(f.monto)}</p>
+                <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{f.proveedor || 'Sin proveedor'} · {fmt(f.monto)}</p>
                 {(f.neto > 0 || f.iva > 0) && (
                   <p className="text-xs" style={{ color: '#6b7280' }}>Neto {fmt(f.neto)} + IVA {fmt(f.iva)}</p>
                 )}
                 <p className="text-xs truncate" style={{ color: '#6b7280' }}>{f.descripcion || 'Sin descripción'} · {new Date(f.created_at).toLocaleDateString('es-CL')}</p>
+                {f.archivo_url && (
+                  <a href={f.archivo_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs mt-1 px-2 py-0.5 rounded border" style={{ borderColor: '#2196f340', color: '#2196f3' }}>📎 Ver factura</a>
+                )}
               </div>
               <button onClick={() => setFacturaAEliminar(f)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center border text-base flex-shrink-0"
