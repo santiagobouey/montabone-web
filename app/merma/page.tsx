@@ -153,10 +153,11 @@ export default function MermaPage() {
         );
         if (error) throw error;
 
-        // Descontar del stock
-        await Promise.all(items.map((i) =>
-          supabase.from('productos').update({ stock: Math.max(0, i.producto.stock - i.cantidad) }).eq('id', i.producto.id)
-        ));
+        // Descontar leyendo el stock actual de la base (no el cacheado)
+        for (const i of items) {
+          const { data } = await supabase.from('productos').select('stock').eq('id', i.producto.id).single();
+          await supabase.from('productos').update({ stock: Math.max(0, (data?.stock ?? 0) - i.cantidad) }).eq('id', i.producto.id);
+        }
       }
 
       setShowModal(false);

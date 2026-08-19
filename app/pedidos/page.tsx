@@ -323,11 +323,14 @@ export default function PedidosPage() {
         });
         if (error) throw new Error(`Error guardando ${item.producto.nombre}: ${error.message} (code: ${error.code})`);
       }
-      for (const item of items) {
-        await supabase.from('productos').update({ stock: Math.max(0, item.producto.stock - item.cantidad) }).eq('id', item.producto.id);
-      }
+      // Descontar leyendo el stock actual de la base (no el cacheado)
+      await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad })), -1);
+
       setItems([]);
       setShowModal(false);
+      await fetchVentasDetalle(inicioMes, finMes);
+      const { data: p } = await supabase.from('productos').select('*').order('nombre');
+      if (p) { setTodosProductos(p); setProductos(p); }
       alert('✅ Venta registrada correctamente');
     } catch (e: unknown) {
       alert('Error: ' + (e instanceof Error ? e.message : 'Error desconocido'));
