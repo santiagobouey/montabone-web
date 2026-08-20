@@ -818,6 +818,16 @@ export default function PedidosPage() {
                           {fmt(precio)}
                         </button>
                       ))}
+                      <input type="number" inputMode="numeric"
+                        value={PRECIOS_PRESET.includes(item.precioUnitario) ? '' : (item.precioUnitario || '')}
+                        onChange={(e) => setPrecioItem(item.producto.id, parseInt(e.target.value) || 0)}
+                        placeholder="Otro $"
+                        className="w-24 px-3 py-1.5 rounded-lg border text-xs font-bold"
+                        style={{
+                          backgroundColor: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? '#e53935' : 'transparent',
+                          borderColor: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? '#e53935' : '#2a2a2a',
+                          color: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? 'white' : '#f5f5f5',
+                        }} />
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -915,6 +925,16 @@ export default function PedidosPage() {
                           {fmt(precio)}
                         </button>
                       ))}
+                      <input type="number" inputMode="numeric"
+                        value={PRECIOS_PRESET.includes(item.precioUnitario) ? '' : (item.precioUnitario || '')}
+                        onChange={(e) => setPrecioItem(item.producto.id, parseInt(e.target.value) || 0)}
+                        placeholder="Otro $"
+                        className="w-24 px-3 py-1.5 rounded-lg border text-xs font-bold"
+                        style={{
+                          backgroundColor: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? '#ff9800' : 'transparent',
+                          borderColor: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? '#ff9800' : '#2a2a2a',
+                          color: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? 'white' : '#f5f5f5',
+                        }} />
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -1004,6 +1024,16 @@ export default function PedidosPage() {
                           {fmt(precio)}
                         </button>
                       ))}
+                      <input type="number" inputMode="numeric"
+                        value={PRECIOS_PRESET.includes(item.precioUnitario) ? '' : (item.precioUnitario || '')}
+                        onChange={(e) => setPrecioItem(item.producto.id, parseInt(e.target.value) || 0)}
+                        placeholder="Otro $"
+                        className="w-24 px-3 py-1.5 rounded-lg border text-xs font-bold"
+                        style={{
+                          backgroundColor: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? '#9c27b0' : 'transparent',
+                          borderColor: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? '#9c27b0' : '#2a2a2a',
+                          color: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? 'white' : '#f5f5f5',
+                        }} />
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
