@@ -92,12 +92,26 @@ export default function InventarioPage() {
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Inventario</h1>
           <p className="text-sm" style={{ color: '#6b7280' }}>{productos.length} productos · {productos.reduce((s, p) => s + p.stock, 0)} uds total</p>
         </div>
         <button onClick={abrirNuevo} className="px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>+ Nuevo</button>
+      </div>
+
+      {/* Valor del inventario */}
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#4caf50' }}>
+          <p className="text-xs" style={{ color: '#6b7280' }}>💵 Valor total de venta</p>
+          <p className="text-2xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(productos.reduce((s, p) => s + p.stock * p.precio, 0))}</p>
+          <p className="text-xs" style={{ color: '#6b7280' }}>Si vendes todo el stock</p>
+        </div>
+        <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
+          <p className="text-xs" style={{ color: '#6b7280' }}>🏷️ Valor a costo</p>
+          <p className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(productos.reduce((s, p) => s + p.stock * (p.costo || 0), 0))}</p>
+          <p className="text-xs" style={{ color: '#6b7280' }}>Lo que te costó</p>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -130,6 +144,7 @@ export default function InventarioPage() {
                 <div className="text-right">
                   <p className="text-3xl font-extrabold" style={{ color }}>{p.stock}</p>
                   <p className="text-xs" style={{ color: '#6b7280' }}>uds</p>
+                  {p.stock > 0 && <p className="text-xs mt-1" style={{ color: '#4caf50' }}>{fmt(p.stock * p.precio)}</p>}
                 </div>
               </div>
             </div>
