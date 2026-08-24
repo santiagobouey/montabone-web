@@ -98,7 +98,7 @@ export default function PedidosPage() {
     try {
       const { data } = await supabase
         .from('pedidos')
-        .select('*, cliente:clientes(nombre), detalle:detalle_pedido(*, producto:productos(*))')
+        .select('*, cliente:clientes(nombre, rut), detalle:detalle_pedido(*, producto:productos(*))')
         .gte('fecha', inicio)
         .lte('fecha', fin)
         .order('fecha', { ascending: false });
@@ -683,6 +683,9 @@ export default function PedidosPage() {
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <p className="font-bold" style={{ color: '#f5f5f5' }}>{p.cliente?.nombre ?? '—'}</p>
+                  {(p.cliente as { rut?: string } | null)?.rut && (
+                    <p className="text-xs" style={{ color: '#6b7280' }}>RUT: {(p.cliente as { rut?: string }).rut}</p>
+                  )}
                   <p className="text-xs" style={{ color: '#6b7280' }}>
                     {new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL')} · {p.vendedor}
                   </p>
