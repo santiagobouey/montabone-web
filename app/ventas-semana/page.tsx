@@ -35,14 +35,14 @@ export default function VentasSemanaPage() {
         const [pedRes, detRes, eveRes, mayRes] = await Promise.all([
           supabase.from('pedidos').select('fecha, total').gte('fecha', inicioStr),
           supabase.from('ventas_detalle').select('fecha, total').gte('fecha', inicioStr),
-          supabase.from('ventas_evento').select('total, evento:eventos(fecha)').gte('eventos.fecha', inicioStr),
+          supabase.from('ventas_evento').select('total, fecha').gte('fecha', inicioStr),
           supabase.from('ventas_mayor').select('fecha, total').gte('fecha', inicioStr),
         ]);
 
         const arr: Venta[] = [];
         for (const p of (pedRes.data || []) as any[]) arr.push({ fecha: p.fecha, total: p.total, tipo: 'pedido' });
         for (const v of (detRes.data || []) as any[]) arr.push({ fecha: v.fecha, total: v.total, tipo: 'detalle' });
-        for (const v of ((eveRes.data || []) as any[]).filter((x) => x.evento)) arr.push({ fecha: v.evento.fecha, total: v.total, tipo: 'evento' });
+        for (const v of ((eveRes.data || []) as any[]).filter((x) => x.fecha)) arr.push({ fecha: v.fecha, total: v.total, tipo: 'evento' });
         for (const v of (mayRes.data || []) as any[]) arr.push({ fecha: v.fecha, total: v.total, tipo: 'mayor' });
         setVentas(arr);
       } catch {}
