@@ -31,11 +31,12 @@ export default function VentasSemanaPage() {
         inicio.setDate(inicio.getDate() - 7 * 7); // 8 semanas atrás
         const inicioStr = iso(inicio);
 
+        // La venta cuenta desde que se ingresa el pedido (cualquier estado), por su fecha
         const [pedRes, detRes, eveRes, mayRes] = await Promise.all([
-          supabase.from('pedidos').select('fecha, total').in('estado', ['entregado', 'pagado']).gte('fecha', inicioStr),
-          supabase.from('ventas_detalle').select('fecha, total').in('estado', ['entregado', 'pagado']).gte('fecha', inicioStr),
+          supabase.from('pedidos').select('fecha, total').gte('fecha', inicioStr),
+          supabase.from('ventas_detalle').select('fecha, total').gte('fecha', inicioStr),
           supabase.from('ventas_evento').select('total, evento:eventos(fecha)').gte('eventos.fecha', inicioStr),
-          supabase.from('ventas_mayor').select('fecha, total').in('estado', ['entregado', 'pagado']).gte('fecha', inicioStr),
+          supabase.from('ventas_mayor').select('fecha, total').gte('fecha', inicioStr),
         ]);
 
         const arr: Venta[] = [];
@@ -91,7 +92,7 @@ export default function VentasSemanaPage() {
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto">
       <div className="mb-4">
         <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Ventas Semanales</h1>
-        <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Resumen de tus ventas por semana (entregadas y pagadas)</p>
+        <p className="text-sm mt-1" style={{ color: '#6b7280' }}>Resumen de tus ventas por semana (desde que ingresa el pedido)</p>
       </div>
 
       {/* Semana seleccionada */}
