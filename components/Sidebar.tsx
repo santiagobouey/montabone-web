@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 const NAV = [
   { href: '/', label: 'Inicio', icon: '🏠' },
   { href: '/pedidos', label: 'Pedidos', icon: '📦' },
+  { href: '/ventas-semana', label: 'Ventas Semanales', icon: '🗓️' },
   { href: '/clientes', label: 'Clientes', icon: '👥' },
   { href: '/datos-clientes', label: 'Datos Clientes', icon: '📇' },
   { href: '/estado-cuenta', label: 'Estado de Cuenta', icon: '🧾' },
