@@ -765,10 +765,19 @@ export default function PedidosPage() {
             {(tipoModal === 'pedido' || editandoPedido) && (
               <>
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Cliente</label>
-                <select value={clienteId} onChange={(e) => selectCliente(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }}>
+                <select value={clienteId} onChange={(e) => selectCliente(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-1 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }}>
                   <option value="">Seleccionar cliente...</option>
-                  {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.rut ? ` — ${c.rut}` : ''}</option>)}
                 </select>
+                {(() => {
+                  const c = clientes.find((x) => x.id === clienteId);
+                  if (!c) return <div className="mb-3" />;
+                  return (
+                    <p className="text-xs mb-3" style={{ color: '#6b7280' }}>
+                      {c.razon_social ? `${c.razon_social} · ` : ''}RUT: <span style={{ color: c.rut ? '#f5f5f5' : '#e53935' }}>{c.rut || 'sin RUT'}</span>
+                    </p>
+                  );
+                })()}
 
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Fecha</label>
                 <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
