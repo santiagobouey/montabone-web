@@ -776,9 +776,12 @@ export default function PedidosPage() {
                   const c = clientes.find((x) => x.id === clienteId);
                   if (!c) return <div className="mb-3" />;
                   return (
-                    <p className="text-xs mb-3" style={{ color: '#6b7280' }}>
-                      {c.razon_social ? `${c.razon_social} · ` : ''}RUT: <span style={{ color: c.rut ? '#f5f5f5' : '#e53935' }}>{c.rut || 'sin RUT'}</span>
-                    </p>
+                    <div className="rounded-lg px-3 py-2 mb-3" style={{ backgroundColor: c.rut ? '#4caf5015' : '#e5393515' }}>
+                      <p className="text-sm font-bold" style={{ color: c.rut ? '#4caf50' : '#e53935' }}>
+                        🪪 RUT: {c.rut || 'sin RUT — complétalo en Datos Clientes'}
+                      </p>
+                      {c.razon_social && <p className="text-xs" style={{ color: '#9ca3af' }}>{c.razon_social}</p>}
+                    </div>
                   );
                 })()}
 
