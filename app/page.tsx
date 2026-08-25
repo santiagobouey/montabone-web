@@ -27,6 +27,7 @@ interface Stats {
   utilidadMes: number;
   ventasLote: number;
   utilidadLote: number;
+  valorStock: number;
   pedidosMes: number;
   ticketPromedio: number;
   productoMasVendido: string;
@@ -154,6 +155,16 @@ export default function DashboardPage() {
           mayorLote.reduce((s, x) => s + x.costo, 0);
         const utilidadLote = ventasLote - costosLote;
 
+        // Valor del stock actual a precio de venta
+        // Longanizas y butifarras: $3.330 · Prietas: $2.940
+        const precioVentaStock = (nombre: string, fallback: number) => {
+          const n = (nombre || '').toLowerCase();
+          if (n.includes('prieta')) return 2940;
+          if (n.includes('longaniza') || n.includes('butifarra')) return 3330;
+          return fallback || 0;
+        };
+        const valorStock = prods.reduce((s, p) => s + (p.stock || 0) * precioVentaStock(p.nombre, p.precio), 0);
+
         // Desglose por estado (pedidos a locales y ventas al detalle del mes)
         const agruparPorEstado = (filas: any[]) => {
           const map: Record<string, EstadoResumen> = {};
@@ -237,6 +248,7 @@ export default function DashboardPage() {
           utilidadMes,
           ventasLote,
           utilidadLote,
+          valorStock,
           pedidosPorEstado,
           detallePorEstado,
           pedidosMes: pedidosMes.length,
@@ -288,17 +300,23 @@ export default function DashboardPage() {
         const ventas = stats?.ventasLote ?? 0;
         const margen = ventas > 0 ? Math.round((util / ventas) * 100) : 0;
         const color = util > 0 ? '#4caf50' : util < 0 ? '#e53935' : '#6b7280';
+        const valorStock = stats?.valorStock ?? 0;
         return (
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <Link href="/ventas-mes" className="rounded-xl border p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#4caf50' + '60', borderLeftWidth: 4, borderLeftColor: '#4caf50' }}>
-              <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>📈 Venta del lote actual</p>
-              <p className="text-3xl md:text-4xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(ventas)}</p>
-              <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Total vendido</p>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <Link href="/ventas-mes" className="rounded-xl border p-4 md:p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#4caf50' + '60', borderLeftWidth: 4, borderLeftColor: '#4caf50' }}>
+              <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>📈 Venta del lote</p>
+              <p className="text-xl md:text-4xl font-extrabold leading-tight" style={{ color: '#4caf50' }}>{fmt(ventas)}</p>
+              <p className="text-[10px] md:text-xs mt-1" style={{ color: '#6b7280' }}>Total vendido</p>
             </Link>
-            <Link href="/periodos" className="rounded-xl border p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: color + '60', borderLeftWidth: 4, borderLeftColor: color }}>
-              <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>💰 Utilidad del lote actual</p>
-              <p className="text-3xl md:text-4xl font-extrabold" style={{ color }}>{fmt(util)}</p>
-              <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Margen <span style={{ color }}>{margen}%</span></p>
+            <Link href="/periodos" className="rounded-xl border p-4 md:p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: color + '60', borderLeftWidth: 4, borderLeftColor: color }}>
+              <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>💰 Utilidad del lote</p>
+              <p className="text-xl md:text-4xl font-extrabold leading-tight" style={{ color }}>{fmt(util)}</p>
+              <p className="text-[10px] md:text-xs mt-1" style={{ color: '#6b7280' }}>Margen <span style={{ color }}>{margen}%</span></p>
+            </Link>
+            <Link href="/inventario" className="rounded-xl border p-4 md:p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#2196f3' + '60', borderLeftWidth: 4, borderLeftColor: '#2196f3' }}>
+              <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>📦 Valor stock actual</p>
+              <p className="text-xl md:text-4xl font-extrabold leading-tight" style={{ color: '#2196f3' }}>{fmt(valorStock)}</p>
+              <p className="text-[10px] md:text-xs mt-1" style={{ color: '#6b7280' }}>A precio de venta</p>
             </Link>
           </div>
         );
