@@ -684,7 +684,7 @@ export default function PedidosPage() {
                 <div>
                   <p className="font-bold" style={{ color: '#f5f5f5' }}>{p.cliente?.nombre ?? '—'}</p>
                   {(p.cliente as { rut?: string } | null)?.rut && (
-                    <p className="text-xs" style={{ color: '#6b7280' }}>RUT: {(p.cliente as { rut?: string }).rut}</p>
+                    <p className="text-xs font-semibold" style={{ color: '#4caf50' }}>🪪 {(p.cliente as { rut?: string }).rut}</p>
                   )}
                   <p className="text-xs" style={{ color: '#6b7280' }}>
                     {new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL')} · {p.vendedor}
