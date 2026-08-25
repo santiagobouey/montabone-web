@@ -17,29 +17,44 @@ export default function VentasHistoricasPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [pedRes, cliRes] = await Promise.all([
+        const [pedRes, detRes, cliRes] = await Promise.all([
           supabase.from('pedidos').select('cliente_id, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))'),
+          supabase.from('ventas_detalle').select('nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))'),
           supabase.from('clientes').select('id, nombre, rut'),
         ]);
         const cliMap = new Map((cliRes.data || []).map((c: any) => [c.id, c]));
+        // nombre (minúscula) → cliente registrado, para unir ventas al detalle
+        const porNombre = new Map((cliRes.data || []).map((c: any) => [String(c.nombre).trim().toLowerCase(), c]));
         const acc: Record<string, ClienteVenta> = {};
 
+        // Suma una línea (producto) a un cliente
+        const agregar = (key: string, nombre: string, rut: string | null, prodNombre: string, unidades: number, sub: number) => {
+          if (!acc[key]) acc[key] = { key, nombre, rut, total: 0, ops: 0, productos: [] };
+          let pr = acc[key].productos.find((x) => x.nombre === prodNombre);
+          if (!pr) { pr = { nombre: prodNombre, unidades: 0, total: 0 }; acc[key].productos.push(pr); }
+          pr.unidades += unidades; pr.total += sub; acc[key].total += sub;
+        };
+
+        // Pedidos (por cliente registrado)
         for (const p of (pedRes.data || []) as any[]) {
           const c = p.cliente_id ? cliMap.get(p.cliente_id) : null;
           const key = c ? c.id : 'sin_cliente';
           if (!acc[key]) acc[key] = { key, nombre: c?.nombre ?? 'Sin cliente', rut: c?.rut ?? null, total: 0, ops: 0, productos: [] };
           acc[key].ops += 1;
-          const prodMap: Record<string, ProdVenta> = {};
-          for (const pr of acc[key].productos) prodMap[pr.nombre] = pr;
-          for (const d of (p.detalle || [])) {
-            const n = d.producto?.nombre ?? '—';
-            const sub = d.cantidad * d.precio_unitario;
-            if (!prodMap[n]) { prodMap[n] = { nombre: n, unidades: 0, total: 0 }; acc[key].productos.push(prodMap[n]); }
-            prodMap[n].unidades += d.cantidad;
-            prodMap[n].total += sub;
-            acc[key].total += sub;
-          }
+          for (const d of (p.detalle || [])) agregar(key, c?.nombre ?? 'Sin cliente', c?.rut ?? null, d.producto?.nombre ?? '—', d.cantidad, d.cantidad * d.precio_unitario);
         }
+
+        // Ventas al detalle (por nombre del comprador; se une al cliente si coincide el nombre)
+        for (const v of (detRes.data || []) as any[]) {
+          const nom = (v.nombre_comprador || '').trim();
+          const reg = nom ? porNombre.get(nom.toLowerCase()) : null;
+          const key = reg ? reg.id : (nom ? `d:${nom.toLowerCase()}` : 'sin_nombre');
+          const nombre = reg?.nombre ?? (nom || 'Sin nombre');
+          if (!acc[key]) acc[key] = { key, nombre, rut: reg?.rut ?? null, total: 0, ops: 0, productos: [] };
+          acc[key].ops += 1;
+          for (const it of (v.items || [])) agregar(key, nombre, reg?.rut ?? null, it.producto?.nombre ?? '—', it.cantidad, it.cantidad * it.precio_unitario);
+        }
+
         for (const c of Object.values(acc)) c.productos.sort((a, b) => b.total - a.total);
         setClientes(Object.values(acc));
       } catch {}
@@ -93,7 +108,7 @@ export default function VentasHistoricasPage() {
                         <span style={{ color: i === 0 ? '#ff9800' : '#6b7280' }}>{i + 1}. </span>{c.nombre}
                       </p>
                       <p className="text-xs" style={{ color: '#6b7280' }}>
-                        {c.rut ? `${c.rut} · ` : ''}{c.ops} pedido{c.ops !== 1 ? 's' : ''}
+                        {c.rut ? `${c.rut} · ` : ''}{c.ops} venta{c.ops !== 1 ? 's' : ''}
                         {totalGeneral > 0 ? ` · ${Math.round(c.total / totalGeneral * 100)}%` : ''}
                       </p>
                     </div>
