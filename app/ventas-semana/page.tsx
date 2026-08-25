@@ -166,6 +166,32 @@ export default function VentasSemanaPage() {
             </p>
           </div>
 
+          {/* Gráfico por mes */}
+          <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+            <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#6b7280' }}>Ventas por mes</p>
+            {(() => {
+              const ordenados = [...meses].reverse(); // más viejo → más nuevo
+              const maxMes = Math.max(...ordenados.map((m) => m.total), 1);
+              return (
+                <svg viewBox="0 0 300 130" width="100%" style={{ display: 'block' }}>
+                  {ordenados.map((m, i) => {
+                    const x = 6 + i * 49;
+                    const h = Math.round((m.total / maxMes) * 85);
+                    const sel = m.key === mesSel;
+                    return (
+                      <g key={m.key} onClick={() => setMesSel(m.key)} style={{ cursor: 'pointer' }}>
+                        {m.total > 0 && <text x={x + 19} y={98 - h - 3} textAnchor="middle" fontSize={7.5} fill="#9ca3af" style={{ fontFamily: 'system-ui' }}>{m.total >= 1000000 ? `${(m.total / 1000000).toFixed(1)}M` : `${Math.round(m.total / 1000)}k`}</text>}
+                        <rect x={x} y={98 - Math.max(h, 2)} width={38} height={Math.max(h, 2)} rx={3} fill={sel ? '#2196f3' : m.total > 0 ? '#4caf50' : '#2a2a2a'} />
+                        <text x={x + 19} y={112} textAnchor="middle" fontSize={7.5} fontWeight={sel ? 'bold' : 'normal'} fill={sel ? '#2196f3' : '#6b7280'} style={{ fontFamily: 'system-ui' }}>{m.label.split(' ')[0].slice(0, 3)}</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              );
+            })()}
+            <p className="text-xs text-center mt-1" style={{ color: '#6b7280' }}>Toca una barra para ver ese mes</p>
+          </div>
+
           {/* Por tipo */}
           <PorTipo lista={porTipoDe(ventasMes, totalMes)} vacio="No hubo ventas este mes" />
 
