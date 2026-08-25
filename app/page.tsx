@@ -28,6 +28,7 @@ interface Stats {
   ventasLote: number;
   utilidadLote: number;
   valorStock: number;
+  utilidadEsperada: number;
   pedidosMes: number;
   ticketPromedio: number;
   productoMasVendido: string;
@@ -164,6 +165,9 @@ export default function DashboardPage() {
           return fallback || 0;
         };
         const valorStock = prods.reduce((s, p) => s + (p.stock || 0) * precioVentaStock(p.nombre, p.precio), 0);
+        const costoStock = prods.reduce((s, p) => s + (p.stock || 0) * (p.costo || 0), 0);
+        // Utilidad mínima esperada = lo ya ganado en el lote + la utilidad que queda por vender del stock
+        const utilidadEsperada = utilidadLote + (valorStock - costoStock);
 
         // Desglose por estado (pedidos a locales y ventas al detalle del mes)
         const agruparPorEstado = (filas: any[]) => {
@@ -249,6 +253,7 @@ export default function DashboardPage() {
           ventasLote,
           utilidadLote,
           valorStock,
+          utilidadEsperada,
           pedidosPorEstado,
           detallePorEstado,
           pedidosMes: pedidosMes.length,
@@ -301,8 +306,10 @@ export default function DashboardPage() {
         const margen = ventas > 0 ? Math.round((util / ventas) * 100) : 0;
         const color = util > 0 ? '#4caf50' : util < 0 ? '#e53935' : '#6b7280';
         const valorStock = stats?.valorStock ?? 0;
+        const utilEsp = stats?.utilidadEsperada ?? 0;
+        const colorEsp = utilEsp > 0 ? '#4caf50' : utilEsp < 0 ? '#e53935' : '#6b7280';
         return (
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <Link href="/ventas-mes" className="rounded-xl border p-4 md:p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#4caf50' + '60', borderLeftWidth: 4, borderLeftColor: '#4caf50' }}>
               <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>📈 Venta del lote</p>
               <p className="text-xl md:text-4xl font-extrabold leading-tight" style={{ color: '#4caf50' }}>{fmt(ventas)}</p>
@@ -317,6 +324,11 @@ export default function DashboardPage() {
               <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>📦 Valor stock actual</p>
               <p className="text-xl md:text-4xl font-extrabold leading-tight" style={{ color: '#2196f3' }}>{fmt(valorStock)}</p>
               <p className="text-[10px] md:text-xs mt-1" style={{ color: '#6b7280' }}>A precio de venta</p>
+            </Link>
+            <Link href="/periodos" className="rounded-xl border p-4 md:p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#ff9800' + '60', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
+              <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>🎯 Utilidad mín. esperada</p>
+              <p className="text-xl md:text-4xl font-extrabold leading-tight" style={{ color: colorEsp }}>{fmt(utilEsp)}</p>
+              <p className="text-[10px] md:text-xs mt-1" style={{ color: '#6b7280' }}>Lote + stock por vender</p>
             </Link>
           </div>
         );
