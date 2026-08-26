@@ -1007,10 +1007,10 @@ export default function PedidosPage() {
 
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Nombre del comprador (opcional)</label>
                 {(() => {
-                  // Todos los nombres: clientes registrados + compradores ya usados (sin repetir)
+                  // Solo compradores ya usados en ventas al detalle (sin repetir)
                   const vistos = new Set<string>();
                   const todos: string[] = [];
-                  for (const n of [...clientes.map((c) => c.nombre), ...nombresGuardados]) {
+                  for (const n of nombresGuardados) {
                     const t = (n || '').trim();
                     if (t && !vistos.has(t.toLowerCase())) { vistos.add(t.toLowerCase()); todos.push(t); }
                   }
