@@ -86,6 +86,7 @@ export default function PedidosPage() {
   // Form detalle
   const [nombreComprador, setNombreComprador] = useState('');
   const [estadoDetalle, setEstadoDetalle] = useState<string>('pendiente');
+  const [nombresGuardados, setNombresGuardados] = useState<string[]>([]);
 
   // Form evento
   const [eventoId, setEventoId] = useState('');
@@ -109,6 +110,19 @@ export default function PedidosPage() {
   const fetchEventos = useCallback(async () => {
     const { data } = await supabase.from('eventos').select('id, nombre, fecha').order('fecha', { ascending: false });
     setEventos(data || []);
+  }, []);
+
+  // Nombres de compradores usados antes (todo el historial), para autocompletar
+  const fetchNombresGuardados = useCallback(async () => {
+    const { data } = await supabase.from('ventas_detalle').select('nombre_comprador').not('nombre_comprador', 'is', null);
+    if (!data) return;
+    const conteo = new Map<string, number>();
+    for (const v of data as { nombre_comprador: string | null }[]) {
+      const n = (v.nombre_comprador || '').trim();
+      if (n) conteo.set(n, (conteo.get(n) || 0) + 1);
+    }
+    // Ordenar por más usados
+    setNombresGuardados([...conteo.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n));
   }, []);
 
   const fetchVentasDetalle = useCallback(async (inicio: string, fin: string) => {
@@ -148,9 +162,10 @@ export default function PedidosPage() {
       fetchPedidos(inicioMes, finMes),
       fetchEventos(),
       fetchVentasDetalle(inicioMes, finMes),
+      fetchNombresGuardados(),
       supabase.from('clientes').select('*').order('nombre'),
       supabase.from('productos').select('*').order('nombre'),
-    ]).then(([, , , c, p]) => {
+    ]).then(([, , , , c, p]) => {
       setClientes(c.data || []);
       setTodosProductos(p.data || []);
       setProductos(p.data || []);
@@ -402,6 +417,7 @@ export default function PedidosPage() {
       setEditandoDetalle(null);
       setShowModal(false);
       await fetchVentasDetalle(inicioMes, finMes);
+      await fetchNombresGuardados();
       const { data: p } = await supabase.from('productos').select('*').order('nombre');
       if (p) { setTodosProductos(p); setProductos(p); }
       alert(editandoDetalle ? '✅ Venta al detalle actualizada' : '✅ Venta al detalle registrada');
@@ -990,9 +1006,29 @@ export default function PedidosPage() {
 
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Nombre del comprador (opcional)</label>
                 <input value={nombreComprador} onChange={(e) => setNombreComprador(e.target.value)}
+                  list="nombres-compradores"
                   placeholder="Ej: María González..."
-                  className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+                  className="w-full rounded-lg px-3 py-2 text-sm border"
                   style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+                <datalist id="nombres-compradores">
+                  {nombresGuardados.map((n) => <option key={n} value={n} />)}
+                </datalist>
+                {/* Chips de acceso rápido (los más usados) */}
+                {nombresGuardados.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2 mb-3">
+                    {nombresGuardados.slice(0, 8).map((n) => (
+                      <button key={n} type="button" onClick={() => setNombreComprador(n)}
+                        className="px-2.5 py-1 rounded-full text-xs border"
+                        style={{
+                          backgroundColor: nombreComprador === n ? '#9c27b0' : '#1c1c1c',
+                          borderColor: nombreComprador === n ? '#9c27b0' : '#2a2a2a',
+                          color: nombreComprador === n ? 'white' : '#9ca3af',
+                        }}>
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Vendedor (opcional)</label>
                 <div className="flex gap-2 mb-3">
