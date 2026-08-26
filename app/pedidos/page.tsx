@@ -87,6 +87,7 @@ export default function PedidosPage() {
   const [nombreComprador, setNombreComprador] = useState('');
   const [estadoDetalle, setEstadoDetalle] = useState<string>('pendiente');
   const [nombresGuardados, setNombresGuardados] = useState<string[]>([]);
+  const [showListaComprador, setShowListaComprador] = useState(false);
 
   // Form evento
   const [eventoId, setEventoId] = useState('');
@@ -1005,30 +1006,57 @@ export default function PedidosPage() {
                 <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
 
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Nombre del comprador (opcional)</label>
-                <input value={nombreComprador} onChange={(e) => setNombreComprador(e.target.value)}
-                  list="nombres-compradores"
-                  placeholder="Ej: María González..."
-                  className="w-full rounded-lg px-3 py-2 text-sm border"
-                  style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
-                <datalist id="nombres-compradores">
-                  {nombresGuardados.map((n) => <option key={n} value={n} />)}
-                </datalist>
-                {/* Chips de acceso rápido (los más usados) */}
-                {nombresGuardados.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2 mb-3">
-                    {nombresGuardados.slice(0, 8).map((n) => (
-                      <button key={n} type="button" onClick={() => setNombreComprador(n)}
-                        className="px-2.5 py-1 rounded-full text-xs border"
-                        style={{
-                          backgroundColor: nombreComprador === n ? '#9c27b0' : '#1c1c1c',
-                          borderColor: nombreComprador === n ? '#9c27b0' : '#2a2a2a',
-                          color: nombreComprador === n ? 'white' : '#9ca3af',
-                        }}>
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                {(() => {
+                  // Todos los nombres: clientes registrados + compradores ya usados (sin repetir)
+                  const vistos = new Set<string>();
+                  const todos: string[] = [];
+                  for (const n of [...clientes.map((c) => c.nombre), ...nombresGuardados]) {
+                    const t = (n || '').trim();
+                    if (t && !vistos.has(t.toLowerCase())) { vistos.add(t.toLowerCase()); todos.push(t); }
+                  }
+                  const filtro = nombreComprador.trim().toLowerCase();
+                  const filtrados = filtro ? todos.filter((n) => n.toLowerCase().includes(filtro)) : todos;
+                  const coincideExacto = todos.some((n) => n.toLowerCase() === filtro);
+                  return (
+                    <div className="relative mb-3">
+                      <div className="flex gap-2">
+                        <input value={nombreComprador}
+                          onChange={(e) => { setNombreComprador(e.target.value); setShowListaComprador(true); }}
+                          onFocus={() => setShowListaComprador(true)}
+                          placeholder="Escribe o elige de la lista..."
+                          className="flex-1 rounded-lg px-3 py-2 text-sm border"
+                          style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+                        <button type="button" onClick={() => setShowListaComprador(!showListaComprador)}
+                          className="px-3 rounded-lg border text-sm"
+                          style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#9ca3af' }}>
+                          {showListaComprador ? '▲' : '▼'}
+                        </button>
+                      </div>
+                      {showListaComprador && (
+                        <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border overflow-y-auto"
+                          style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', maxHeight: 220 }}>
+                          {nombreComprador.trim() && !coincideExacto && (
+                            <button type="button" onMouseDown={(e) => { e.preventDefault(); setShowListaComprador(false); }}
+                              className="w-full text-left px-3 py-2 text-sm border-b"
+                              style={{ borderColor: '#2a2a2a', color: '#4caf50' }}>
+                              ➕ Usar &quot;{nombreComprador.trim()}&quot; (nuevo)
+                            </button>
+                          )}
+                          {filtrados.length === 0 ? (
+                            <p className="px-3 py-2 text-sm" style={{ color: '#6b7280' }}>Sin clientes guardados — escribe el nombre</p>
+                          ) : filtrados.map((n) => (
+                            <button key={n} type="button"
+                              onMouseDown={(e) => { e.preventDefault(); setNombreComprador(n); setShowListaComprador(false); }}
+                              className="w-full text-left px-3 py-2 text-sm transition-colors hover:brightness-125"
+                              style={{ backgroundColor: nombreComprador === n ? '#9c27b0' : 'transparent', color: nombreComprador === n ? 'white' : '#f5f5f5' }}>
+                              {n}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Vendedor (opcional)</label>
                 <div className="flex gap-2 mb-3">
