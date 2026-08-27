@@ -28,10 +28,16 @@ export default function ReportesPage() {
         const inicio = `${anioFiltro}-${String(mesFiltro + 1).padStart(2, '0')}-01`;
         const ultimoDia = new Date(anioFiltro, mesFiltro + 1, 0).getDate();
         const fin = `${anioFiltro}-${String(mesFiltro + 1).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`;
-        const { data: pedidos } = await supabase
-          .from('pedidos')
-          .select('*, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))')
-          .gte('fecha', inicio).lte('fecha', fin);
+        const [{ data: pedidos }, { data: detalles }] = await Promise.all([
+          supabase
+            .from('pedidos')
+            .select('*, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))')
+            .gte('fecha', inicio).lte('fecha', fin),
+          supabase
+            .from('ventas_detalle')
+            .select('total, vendedor, nombre_comprador')
+            .gte('fecha', inicio).lte('fecha', fin),
+        ]);
 
         const lista = pedidos || [];
         const pagados = lista.filter((p) => p.estado === 'pagado');
@@ -46,6 +52,16 @@ export default function ReportesPage() {
             porProducto[nombre].cantidad += d.cantidad;
             porProducto[nombre].total += d.precio_unitario * d.cantidad;
           }
+        }
+
+        // Comisiones de ventas al detalle (5% al vendedor de la venta),
+        // excepto cuando la compra es de Santiago Bouey o Hernán Torres.
+        const norm = (s: string | null) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "").trim();
+        const COMPRADORES_EXCLUIDOS = ['santiago bouey', 'hernan torres'];
+        for (const v of (detalles || []) as { total: number; vendedor: string | null; nombre_comprador: string | null }[]) {
+          if (!v.vendedor) continue;
+          if (COMPRADORES_EXCLUIDOS.includes(norm(v.nombre_comprador))) continue;
+          comisiones[v.vendedor] = (comisiones[v.vendedor] || 0) + Math.round(v.total * 0.05);
         }
 
         setData({
