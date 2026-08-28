@@ -29,6 +29,7 @@ interface Stats {
   costoLote: number;
   utilidadLote: number;
   valorStock: number;
+  paquetesStock: number;
   utilidadEsperada: number;
   pedidosMes: number;
   ticketPromedio: number;
@@ -167,6 +168,7 @@ export default function DashboardPage() {
         };
         const valorStock = prods.reduce((s, p) => s + (p.stock || 0) * precioVentaStock(p.nombre), 0);
         const costoStock = prods.reduce((s, p) => s + (p.stock || 0) * (p.costo || 0), 0);
+        const paquetesStock = prods.reduce((s, p) => s + (p.stock || 0), 0);
         // Utilidad mínima esperada = lo ya ganado en el lote + la utilidad que queda por vender del stock
         const utilidadEsperada = utilidadLote + (valorStock - costoStock);
 
@@ -255,6 +257,7 @@ export default function DashboardPage() {
           costoLote: costosLote,
           utilidadLote,
           valorStock,
+          paquetesStock,
           utilidadEsperada,
           pedidosPorEstado,
           detallePorEstado,
@@ -331,6 +334,7 @@ export default function DashboardPage() {
             <Link href="/inventario" className="rounded-xl border p-4 md:p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#2196f3' + '60', borderLeftWidth: 4, borderLeftColor: '#2196f3' }}>
               <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>📦 Valor stock actual</p>
               <p className="text-base md:text-xl font-extrabold leading-tight tracking-tight whitespace-nowrap" style={{ color: '#2196f3' }}>{fmt(valorStock)}</p>
+              <p className="text-[10px] md:text-xs mt-1" style={{ color: '#6b7280' }}>{(stats?.paquetesStock ?? 0).toLocaleString('es-CL')} paquetes</p>
             </Link>
             <Link href="/periodos" className="rounded-xl border p-4 md:p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#ff9800' + '60', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
               <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>🎯 Utilidad mín. esperada</p>
