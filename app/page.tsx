@@ -158,14 +158,14 @@ export default function DashboardPage() {
         const utilidadLote = ventasLote - costosLote;
 
         // Valor del stock actual a precio de venta
-        // Longanizas y butifarras: $3.330 · Prietas: $2.940
-        const precioVentaStock = (nombre: string, fallback: number) => {
+        // Prietas: $1.650 · Jalapeño: $2.770 · Resto: $2.810
+        const precioVentaStock = (nombre: string) => {
           const n = (nombre || '').toLowerCase();
-          if (n.includes('prieta')) return 2940;
-          if (n.includes('longaniza') || n.includes('butifarra')) return 3330;
-          return fallback || 0;
+          if (n.includes('prieta')) return 1650;
+          if (n.includes('jalape')) return 2770;
+          return 2810;
         };
-        const valorStock = prods.reduce((s, p) => s + (p.stock || 0) * precioVentaStock(p.nombre, p.precio), 0);
+        const valorStock = prods.reduce((s, p) => s + (p.stock || 0) * precioVentaStock(p.nombre), 0);
         const costoStock = prods.reduce((s, p) => s + (p.stock || 0) * (p.costo || 0), 0);
         // Utilidad mínima esperada = lo ya ganado en el lote + la utilidad que queda por vender del stock
         const utilidadEsperada = utilidadLote + (valorStock - costoStock);
