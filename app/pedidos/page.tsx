@@ -88,6 +88,9 @@ export default function PedidosPage() {
   const [estadoDetalle, setEstadoDetalle] = useState<string>('pendiente');
   const [nombresGuardados, setNombresGuardados] = useState<string[]>([]);
   const [showListaComprador, setShowListaComprador] = useState(false);
+  // Pendientes arrastrados de meses anteriores (no se pierden al cambiar de mes)
+  const [arrastradosPed, setArrastradosPed] = useState<Pedido[]>([]);
+  const [arrastradosDet, setArrastradosDet] = useState<VentaDetalle[]>([]);
 
   // Form evento
   const [eventoId, setEventoId] = useState('');
@@ -158,15 +161,40 @@ export default function PedidosPage() {
     } catch {}
   }, []);
 
+  // Pedidos y ventas al detalle PENDIENTES/PREPARADOS de meses anteriores al filtro
+  const fetchArrastrados = useCallback(async (inicio: string) => {
+    try {
+      const [pedR, detR] = await Promise.all([
+        supabase.from('pedidos')
+          .select('*, cliente:clientes(nombre, rut), detalle:detalle_pedido(*, producto:productos(*))')
+          .in('estado', ['pendiente', 'preparado']).lt('fecha', inicio).order('fecha', { ascending: true }),
+        supabase.from('ventas_detalle')
+          .select('id, fecha, total, estado, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto_id, producto:productos(nombre))')
+          .in('estado', ['pendiente', 'preparado']).lt('fecha', inicio).order('fecha', { ascending: true }),
+      ]);
+      setArrastradosPed(pedR.data || []);
+      const mappedDet: VentaDetalle[] = ((detR.data || []) as unknown as Array<{
+        id: string; fecha: string; total: number; estado: string; vendedor: string | null; nombre_comprador: string | null; observaciones: string | null;
+        items: Array<{ cantidad: number; precio_unitario: number; producto_id: string | null; producto: { nombre: string } | null }>;
+      }>).map((v) => ({
+        id: v.id, fecha: v.fecha, total: v.total, estado: v.estado, vendedor: v.vendedor,
+        nombre_comprador: v.nombre_comprador, observaciones: v.observaciones,
+        items: (v.items || []).map((i) => ({ producto_id: i.producto_id, nombre: i.producto?.nombre ?? '—', cantidad: i.cantidad, precio_unitario: i.precio_unitario })),
+      }));
+      setArrastradosDet(mappedDet);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     Promise.all([
       fetchPedidos(inicioMes, finMes),
       fetchEventos(),
       fetchVentasDetalle(inicioMes, finMes),
+      fetchArrastrados(inicioMes),
       fetchNombresGuardados(),
       supabase.from('clientes').select('*').order('nombre'),
       supabase.from('productos').select('*').order('nombre'),
-    ]).then(([, , , , c, p]) => {
+    ]).then(([, , , , , c, p]) => {
       setClientes(c.data || []);
       setTodosProductos(p.data || []);
       setProductos(p.data || []);
@@ -471,7 +499,7 @@ export default function PedidosPage() {
   }
 
   async function cambiarEstado(id: string, estado: EstadoPedido) {
-    const p = pedidos.find((x) => x.id === id);
+    const p = [...pedidos, ...arrastradosPed].find((x) => x.id === id);
 
     // Ajustar stock según entra o sale de un estado que consume stock (entregado/pagado)
     if (p) {
@@ -498,12 +526,13 @@ export default function PedidosPage() {
       });
     }
     await fetchPedidos(inicioMes, finMes);
+    await fetchArrastrados(inicioMes);
     const { data: prods } = await supabase.from('productos').select('*').order('nombre');
     if (prods) { setTodosProductos(prods); setProductos(prods); }
   }
 
   async function cambiarEstadoDetalle(id: string, estado: string) {
-    const v = ventasDetalle.find((x) => x.id === id);
+    const v = [...ventasDetalle, ...arrastradosDet].find((x) => x.id === id);
     if (v) {
       const eraConsumido = CONSUMEN_STOCK.includes(v.estado);
       const seraConsumido = CONSUMEN_STOCK.includes(estado);
@@ -516,6 +545,7 @@ export default function PedidosPage() {
     }
     await supabase.from('ventas_detalle').update({ estado }).eq('id', id);
     await fetchVentasDetalle(inicioMes, finMes);
+    await fetchArrastrados(inicioMes);
     const { data: prods } = await supabase.from('productos').select('*').order('nombre');
     if (prods) { setTodosProductos(prods); setProductos(prods); }
   }
@@ -532,6 +562,7 @@ export default function PedidosPage() {
     await supabase.from('pedidos').delete().eq('id', p.id);
     setPedidoAEliminar(null);
     await fetchPedidos(inicioMes, finMes);
+    await fetchArrastrados(inicioMes);
     const { data: prods } = await supabase.from('productos').select('*').order('nombre');
     if (prods) { setTodosProductos(prods); setProductos(prods); }
   }
@@ -567,6 +598,64 @@ export default function PedidosPage() {
           </button>
         </div>
       </div>
+
+      {/* Pendientes arrastrados de meses anteriores */}
+      {(arrastradosPed.length + arrastradosDet.length) > 0 && (
+        <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#ff980010', borderColor: '#ff9800' + '60', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#ff9800' }}>
+            ⏳ Pendientes de meses anteriores ({arrastradosPed.length + arrastradosDet.length})
+          </p>
+          <div className="space-y-2">
+            {arrastradosPed.map((p) => {
+              const color = ESTADO_COLORS[p.estado] || '#6b7280';
+              return (
+                <div key={'ap' + p.id} className="rounded-lg border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm" style={{ color: '#f5f5f5' }}>📦 {p.cliente?.nombre ?? '—'}</p>
+                      <p className="text-xs" style={{ color: '#6b7280' }}>
+                        {new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })} · {fmt(p.total)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button onClick={() => abrirEditar(p)} className="w-7 h-7 rounded-lg flex items-center justify-center border text-sm" style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>✏️</button>
+                      <span className="text-xs font-bold px-2 py-0.5 rounded-full border" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>{p.estado.toUpperCase()}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {ESTADOS.filter((e) => e !== p.estado).map((e) => (
+                      <button key={e} onClick={() => cambiarEstado(p.id, e)} className="text-xs px-2 py-1 rounded border"
+                        style={{ borderColor: ESTADO_COLORS[e] + '60', color: ESTADO_COLORS[e], backgroundColor: ESTADO_COLORS[e] + '10' }}>→ {e}</button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {arrastradosDet.map((v) => {
+              const color = ESTADO_COLORS[v.estado] || '#6b7280';
+              return (
+                <div key={'ad' + v.id} className="rounded-lg border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm" style={{ color: '#f5f5f5' }}>🛒 {v.nombre_comprador || 'Cliente al detalle'}</p>
+                      <p className="text-xs" style={{ color: '#6b7280' }}>
+                        {new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })} · {fmt(v.total)}
+                      </p>
+                    </div>
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full border flex-shrink-0" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>{v.estado.toUpperCase()}</span>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {ESTADOS.filter((e) => e !== v.estado).map((e) => (
+                      <button key={e} onClick={() => cambiarEstadoDetalle(v.id, e)} className="text-xs px-2 py-1 rounded border"
+                        style={{ borderColor: ESTADO_COLORS[e] + '60', color: ESTADO_COLORS[e], backgroundColor: ESTADO_COLORS[e] + '10' }}>→ {e}</button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Selector de mes */}
       <div className="mb-4">
