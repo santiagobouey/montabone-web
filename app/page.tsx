@@ -30,6 +30,8 @@ interface Stats {
   utilidadLote: number;
   valorStock: number;
   paquetesStock: number;
+  paquetesVendidos: number;
+  pctVendido: number;
   utilidadEsperada: number;
   pedidosMes: number;
   ticketPromedio: number;
@@ -120,9 +122,9 @@ export default function DashboardPage() {
           supabase.from('pedidos').select('estado, total').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_detalle').select('estado, total').gte('fecha', inicioMes).lte('fecha', finMes),
           // Lote actual (período sin cerrar): todo lo que aún no ha sido archivado
-          supabase.from('pedidos').select('total').is('periodo_id', null),
-          supabase.from('ventas_detalle').select('total').is('periodo_id', null),
-          supabase.from('ventas_evento').select('total').is('periodo_id', null),
+          supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad)').is('periodo_id', null),
+          supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad)').is('periodo_id', null),
+          supabase.from('ventas_evento').select('total, cantidad').is('periodo_id', null),
           supabase.from('costos_factura').select('monto').is('periodo_id', null),
           supabase.from('ventas_mayor').select('total, costo').is('periodo_id', null),
           supabase.from('mermas').select('destino_nombre, seguimiento_fecha, producto:productos(nombre)').eq('motivo', 'muestra').eq('seguimiento_hecho', false).not('seguimiento_fecha', 'is', null).lte('seguimiento_fecha', hoyStr),
@@ -169,6 +171,15 @@ export default function DashboardPage() {
         const valorStock = prods.reduce((s, p) => s + (p.stock || 0) * precioVentaStock(p.nombre), 0);
         const costoStock = prods.reduce((s, p) => s + (p.stock || 0) * (p.costo || 0), 0);
         const paquetesStock = prods.reduce((s, p) => s + (p.stock || 0), 0);
+
+        // Paquetes vendidos en el lote (pedidos + detalle + eventos) y % del stock vendido
+        const paquetesVendidos =
+          ((pedidosLoteRes.data || []) as any[]).reduce((s, p) => s + (p.detalle || []).reduce((a: number, d: any) => a + (d.cantidad || 0), 0), 0) +
+          ((detalleLoteRes.data || []) as any[]).reduce((s, v) => s + (v.items || []).reduce((a: number, i: any) => a + (i.cantidad || 0), 0), 0) +
+          ((eventosLoteRes.data || []) as any[]).reduce((s, e) => s + (e.cantidad || 0), 0);
+        const pctVendido = (paquetesVendidos + paquetesStock) > 0
+          ? Math.round((paquetesVendidos / (paquetesVendidos + paquetesStock)) * 100)
+          : 0;
         // Utilidad mínima esperada = lo ya ganado en el lote + la utilidad que queda por vender del stock
         const utilidadEsperada = utilidadLote + (valorStock - costoStock);
 
@@ -258,6 +269,8 @@ export default function DashboardPage() {
           utilidadLote,
           valorStock,
           paquetesStock,
+          paquetesVendidos,
+          pctVendido,
           utilidadEsperada,
           pedidosPorEstado,
           detallePorEstado,
@@ -319,7 +332,7 @@ export default function DashboardPage() {
             <Link href="/ventas-mes" className="rounded-xl border p-4 md:p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#4caf50' + '60', borderLeftWidth: 4, borderLeftColor: '#4caf50' }}>
               <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>📈 Venta del lote</p>
               <p className="text-base md:text-xl font-extrabold leading-tight tracking-tight whitespace-nowrap" style={{ color: '#4caf50' }}>{fmt(ventas)}</p>
-              <p className="text-[10px] md:text-xs mt-1" style={{ color: '#6b7280' }}>Total vendido</p>
+              <p className="text-[10px] md:text-xs mt-1" style={{ color: '#6b7280' }}>{stats?.pctVendido ?? 0}% del stock vendido</p>
             </Link>
             <Link href="/costos" className="rounded-xl border p-4 md:p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#e53935' + '60', borderLeftWidth: 4, borderLeftColor: '#e53935' }}>
               <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>🏭 Costo del lote</p>
