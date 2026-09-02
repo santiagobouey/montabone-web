@@ -81,19 +81,37 @@ export default function ReportesPage() {
 
   return (
     <div className="p-4 md:p-6 pb-20 md:pb-6 max-w-4xl mx-auto">
-      <div className="mb-4">
+      {/* Estilos de impresión: reporte limpio en blanco */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          body * { visibility: hidden !important; }
+          #reporte-print, #reporte-print * { visibility: visible !important; }
+          #reporte-print { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; }
+          #reporte-print, #reporte-print * { color: #111 !important; background: #fff !important; border-color: #ccc !important; }
+          .no-print { display: none !important; }
+          .print-only { display: block !important; }
+        }
+        .print-only { display: none; }
+      ` }} />
+
+      <div className="flex items-center justify-between mb-4 no-print">
         <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Reportes</h1>
+        <button onClick={() => window.print()}
+          className="px-4 py-2 rounded-lg font-semibold text-sm text-white"
+          style={{ backgroundColor: '#2196f3' }}>
+          🖨️ Imprimir
+        </button>
       </div>
 
       {/* Selector de mes */}
       <button onClick={() => setShowSelectorMes(!showSelectorMes)}
-        className="w-full flex items-center justify-between rounded-xl border px-4 py-3 mb-4"
+        className="w-full flex items-center justify-between rounded-xl border px-4 py-3 mb-4 no-print"
         style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
         <p className="font-bold" style={{ color: '#f5f5f5' }}>📅 {MESES[mesFiltro]} {anioFiltro}</p>
         <span style={{ color: '#6b7280' }}>{showSelectorMes ? '▲' : '▼'}</span>
       </button>
       {showSelectorMes && (
-        <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+        <div className="rounded-xl border p-4 mb-4 no-print" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => setAnioFiltro(anioFiltro - 1)} className="w-8 h-8 rounded-lg border" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>‹</button>
             <p className="font-bold" style={{ color: '#f5f5f5' }}>{anioFiltro}</p>
@@ -118,6 +136,13 @@ export default function ReportesPage() {
           </div>
         </div>
       )}
+
+      <div id="reporte-print">
+      {/* Encabezado solo visible al imprimir */}
+      <div className="print-only" style={{ marginBottom: 16 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Montabone — Reporte</h1>
+        <p style={{ fontSize: 14, margin: '4px 0 0' }}>{MESES[mesFiltro]} {anioFiltro} · Emitido {new Date().toLocaleDateString('es-CL')}</p>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 mb-6">
         {[
@@ -160,6 +185,7 @@ export default function ReportesPage() {
           </div>
         ))}
         {(data?.ventasPorProducto.length ?? 0) === 0 && <p className="p-4 text-sm" style={{ color: '#6b7280' }}>Sin ventas este mes</p>}
+      </div>
       </div>
     </div>
   );
