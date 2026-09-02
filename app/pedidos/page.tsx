@@ -167,10 +167,10 @@ export default function PedidosPage() {
       const [pedR, detR] = await Promise.all([
         supabase.from('pedidos')
           .select('*, cliente:clientes(nombre, rut), detalle:detalle_pedido(*, producto:productos(*))')
-          .in('estado', ['pendiente', 'preparado']).lt('fecha', inicio).order('fecha', { ascending: true }),
+          .in('estado', ['pendiente', 'preparado', 'entregado']).lt('fecha', inicio).order('fecha', { ascending: true }),
         supabase.from('ventas_detalle')
           .select('id, fecha, total, estado, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto_id, producto:productos(nombre))')
-          .in('estado', ['pendiente', 'preparado']).lt('fecha', inicio).order('fecha', { ascending: true }),
+          .in('estado', ['pendiente', 'preparado', 'entregado']).lt('fecha', inicio).order('fecha', { ascending: true }),
       ]);
       setArrastradosPed(pedR.data || []);
       const mappedDet: VentaDetalle[] = ((detR.data || []) as unknown as Array<{
@@ -599,63 +599,81 @@ export default function PedidosPage() {
         </div>
       </div>
 
-      {/* Pendientes arrastrados de meses anteriores */}
-      {(arrastradosPed.length + arrastradosDet.length) > 0 && (
-        <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#ff980010', borderColor: '#ff9800' + '60', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
-          <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#ff9800' }}>
-            ⏳ Pendientes de meses anteriores ({arrastradosPed.length + arrastradosDet.length})
-          </p>
-          <div className="space-y-2">
-            {arrastradosPed.map((p) => {
-              const color = ESTADO_COLORS[p.estado] || '#6b7280';
-              return (
-                <div key={'ap' + p.id} className="rounded-lg border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="min-w-0">
-                      <p className="font-bold text-sm" style={{ color: '#f5f5f5' }}>📦 {p.cliente?.nombre ?? '—'}</p>
-                      <p className="text-xs" style={{ color: '#6b7280' }}>
-                        {new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })} · {fmt(p.total)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button onClick={() => abrirEditar(p)} className="w-7 h-7 rounded-lg flex items-center justify-center border text-sm" style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>✏️</button>
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full border" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>{p.estado.toUpperCase()}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    {ESTADOS.filter((e) => e !== p.estado).map((e) => (
-                      <button key={e} onClick={() => cambiarEstado(p.id, e)} className="text-xs px-2 py-1 rounded border"
-                        style={{ borderColor: ESTADO_COLORS[e] + '60', color: ESTADO_COLORS[e], backgroundColor: ESTADO_COLORS[e] + '10' }}>→ {e}</button>
-                    ))}
-                  </div>
+      {/* Arrastrados de meses anteriores: pendientes y por cobrar */}
+      {(() => {
+        const cardPed = (p: Pedido) => {
+          const color = ESTADO_COLORS[p.estado] || '#6b7280';
+          return (
+            <div key={'ap' + p.id} className="rounded-lg border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+              <div className="flex justify-between items-start mb-2">
+                <div className="min-w-0">
+                  <p className="font-bold text-sm" style={{ color: '#f5f5f5' }}>📦 {p.cliente?.nombre ?? '—'}</p>
+                  <p className="text-xs" style={{ color: '#6b7280' }}>
+                    {new Date(p.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })} · {fmt(p.total)}
+                  </p>
                 </div>
-              );
-            })}
-            {arrastradosDet.map((v) => {
-              const color = ESTADO_COLORS[v.estado] || '#6b7280';
-              return (
-                <div key={'ad' + v.id} className="rounded-lg border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="min-w-0">
-                      <p className="font-bold text-sm" style={{ color: '#f5f5f5' }}>🛒 {v.nombre_comprador || 'Cliente al detalle'}</p>
-                      <p className="text-xs" style={{ color: '#6b7280' }}>
-                        {new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })} · {fmt(v.total)}
-                      </p>
-                    </div>
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full border flex-shrink-0" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>{v.estado.toUpperCase()}</span>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    {ESTADOS.filter((e) => e !== v.estado).map((e) => (
-                      <button key={e} onClick={() => cambiarEstadoDetalle(v.id, e)} className="text-xs px-2 py-1 rounded border"
-                        style={{ borderColor: ESTADO_COLORS[e] + '60', color: ESTADO_COLORS[e], backgroundColor: ESTADO_COLORS[e] + '10' }}>→ {e}</button>
-                    ))}
-                  </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => abrirEditar(p)} className="w-7 h-7 rounded-lg flex items-center justify-center border text-sm" style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>✏️</button>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full border" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>{p.estado.toUpperCase()}</span>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {ESTADOS.filter((e) => e !== p.estado).map((e) => (
+                  <button key={e} onClick={() => cambiarEstado(p.id, e)} className="text-xs px-2 py-1 rounded border"
+                    style={{ borderColor: ESTADO_COLORS[e] + '60', color: ESTADO_COLORS[e], backgroundColor: ESTADO_COLORS[e] + '10' }}>→ {e}</button>
+                ))}
+              </div>
+            </div>
+          );
+        };
+        const cardDet = (v: VentaDetalle) => {
+          const color = ESTADO_COLORS[v.estado] || '#6b7280';
+          return (
+            <div key={'ad' + v.id} className="rounded-lg border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+              <div className="flex justify-between items-start mb-2">
+                <div className="min-w-0">
+                  <p className="font-bold text-sm" style={{ color: '#f5f5f5' }}>🛒 {v.nombre_comprador || 'Cliente al detalle'}</p>
+                  <p className="text-xs" style={{ color: '#6b7280' }}>
+                    {new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })} · {fmt(v.total)}
+                  </p>
+                </div>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-full border flex-shrink-0" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>{v.estado.toUpperCase()}</span>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {ESTADOS.filter((e) => e !== v.estado).map((e) => (
+                  <button key={e} onClick={() => cambiarEstadoDetalle(v.id, e)} className="text-xs px-2 py-1 rounded border"
+                    style={{ borderColor: ESTADO_COLORS[e] + '60', color: ESTADO_COLORS[e], backgroundColor: ESTADO_COLORS[e] + '10' }}>→ {e}</button>
+                ))}
+              </div>
+            </div>
+          );
+        };
+        const pendPed = arrastradosPed.filter((p) => p.estado !== 'entregado');
+        const pendDet = arrastradosDet.filter((v) => v.estado !== 'entregado');
+        const cobPed = arrastradosPed.filter((p) => p.estado === 'entregado');
+        const cobDet = arrastradosDet.filter((v) => v.estado === 'entregado');
+        const totalCobrar = cobPed.reduce((s, p) => s + p.total, 0) + cobDet.reduce((s, v) => s + v.total, 0);
+        return (
+          <>
+            {(pendPed.length + pendDet.length) > 0 && (
+              <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#ff980010', borderColor: '#ff9800' + '60', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
+                <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#ff9800' }}>
+                  ⏳ Pendientes de meses anteriores ({pendPed.length + pendDet.length})
+                </p>
+                <div className="space-y-2">{pendPed.map(cardPed)}{pendDet.map(cardDet)}</div>
+              </div>
+            )}
+            {(cobPed.length + cobDet.length) > 0 && (
+              <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#e5393510', borderColor: '#e53935' + '60', borderLeftWidth: 4, borderLeftColor: '#e53935' }}>
+                <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{ color: '#e53935' }}>
+                  💰 Por cobrar de meses anteriores ({cobPed.length + cobDet.length}) · {fmt(totalCobrar)}
+                </p>
+                <div className="space-y-2">{cobPed.map(cardPed)}{cobDet.map(cardDet)}</div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* Selector de mes */}
       <div className="mb-4">
