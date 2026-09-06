@@ -14,6 +14,7 @@ interface FacturaCosto {
   descripcion: string | null;
   archivo_url: string | null;
   archivo_nombre: string | null;
+  pagada: boolean;
   created_at: string;
 }
 
@@ -34,7 +35,7 @@ export default function ProveedoresPage() {
 
   const fetchDatos = useCallback(async () => {
     const [cRes, pRes] = await Promise.all([
-      supabase.from('costos_factura').select('id, monto, neto, iva, proveedor, descripcion, archivo_url, archivo_nombre, created_at').is('periodo_id', null).order('created_at', { ascending: false }),
+      supabase.from('costos_factura').select('id, monto, neto, iva, proveedor, descripcion, archivo_url, archivo_nombre, pagada, created_at').is('periodo_id', null).order('created_at', { ascending: false }),
       supabase.from('proveedores').select('id, nombre').order('nombre'),
     ]);
     setHistorial((cRes.data || []) as FacturaCosto[]);
@@ -47,6 +48,8 @@ export default function ProveedoresPage() {
   const ivaNum = Math.round(netoNum * 0.19);
   const totalNum = netoNum + ivaNum;
   const totalPagado = historial.reduce((s, f) => s + f.monto, 0);
+  const totalPorPagar = historial.filter((f) => !f.pagada).reduce((s, f) => s + f.monto, 0);
+  const totalYaPagado = historial.filter((f) => f.pagada).reduce((s, f) => s + f.monto, 0);
 
   async function analizarArchivo(file: File) {
     setArchivo(file);
@@ -127,6 +130,12 @@ export default function ProveedoresPage() {
     await fetchDatos();
   }
 
+  async function togglePagada(f: FacturaCosto) {
+    const nuevo = !f.pagada;
+    setHistorial((prev) => prev.map((x) => x.id === f.id ? { ...x, pagada: nuevo } : x)); // optimista
+    await supabase.from('costos_factura').update({ pagada: nuevo }).eq('id', f.id);
+  }
+
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
@@ -141,6 +150,18 @@ export default function ProveedoresPage() {
         <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>🧾 Total en costos (período actual)</p>
         <p className="text-3xl font-extrabold" style={{ color: '#e53935' }}>{fmt(totalPagado)}</p>
         <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{historial.length} factura{historial.length !== 1 ? 's' : ''} de proveedor</p>
+      </div>
+
+      {/* Pagado vs por pagar */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#4caf50' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>✅ Pagado</p>
+          <p className="text-xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(totalYaPagado)}</p>
+        </div>
+        <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>⏳ Por pagar</p>
+          <p className="text-xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(totalPorPagar)}</p>
+        </div>
       </div>
 
       {/* Formulario nueva factura */}
@@ -223,7 +244,13 @@ export default function ProveedoresPage() {
           {historial.map((f, i) => (
             <div key={f.id} className="flex items-center justify-between px-4 py-3 gap-2" style={{ borderBottom: i < historial.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
               <div className="min-w-0">
-                <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{f.proveedor || 'Sin proveedor'} · {fmt(f.monto)}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{f.proveedor || 'Sin proveedor'} · {fmt(f.monto)}</p>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full border"
+                    style={{ color: f.pagada ? '#4caf50' : '#ff9800', backgroundColor: (f.pagada ? '#4caf50' : '#ff9800') + '20', borderColor: (f.pagada ? '#4caf50' : '#ff9800') + '40' }}>
+                    {f.pagada ? '✅ Pagada' : '⏳ Por pagar'}
+                  </span>
+                </div>
                 {(f.neto > 0 || f.iva > 0) && (
                   <p className="text-xs" style={{ color: '#6b7280' }}>Neto {fmt(f.neto)} + IVA {fmt(f.iva)}</p>
                 )}
@@ -232,9 +259,16 @@ export default function ProveedoresPage() {
                   <a href={f.archivo_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs mt-1 px-2 py-0.5 rounded border" style={{ borderColor: '#2196f340', color: '#2196f3' }}>📎 Ver factura</a>
                 )}
               </div>
-              <button onClick={() => setFacturaAEliminar(f)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center border text-base flex-shrink-0"
-                style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
+              <div className="flex flex-col gap-2 flex-shrink-0">
+                <button onClick={() => togglePagada(f)}
+                  className="px-3 h-8 rounded-lg flex items-center justify-center border text-xs font-semibold whitespace-nowrap"
+                  style={{ borderColor: (f.pagada ? '#ff9800' : '#4caf50') + '60', color: f.pagada ? '#ff9800' : '#4caf50', backgroundColor: (f.pagada ? '#ff9800' : '#4caf50') + '10' }}>
+                  {f.pagada ? '↩ Por pagar' : '✓ Pagar'}
+                </button>
+                <button onClick={() => setFacturaAEliminar(f)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center border text-base self-end"
+                  style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
+              </div>
             </div>
           ))}
         </div>
