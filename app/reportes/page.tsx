@@ -41,11 +41,16 @@ export default function ReportesPage() {
 
         const lista = pedidos || [];
         const pagados = lista.filter((p) => p.estado === 'pagado');
+        // Se cuentan como venta del mes cuando ya están entregados (o pagados)
+        const entregadas = lista.filter((p) => p.estado === 'entregado' || p.estado === 'pagado');
         const comisiones: Record<string, number> = {};
         const porProducto: Record<string, { cantidad: number; total: number }> = {};
 
         for (const p of lista) {
           comisiones[p.vendedor] = (comisiones[p.vendedor] || 0) + Math.round(p.total * 0.05);
+        }
+        // Ventas por producto: solo lo ya entregado (o pagado)
+        for (const p of entregadas) {
           for (const d of (p.detalle || [])) {
             const nombre = d.producto?.nombre ?? 'Desconocido';
             if (!porProducto[nombre]) porProducto[nombre] = { cantidad: 0, total: 0 };
@@ -65,8 +70,8 @@ export default function ReportesPage() {
         }
 
         setData({
-          ventasTotales: lista.reduce((s, p) => s + p.total, 0),
-          pedidosTotales: lista.length,
+          ventasTotales: entregadas.reduce((s, p) => s + p.total, 0),
+          pedidosTotales: entregadas.length,
           ventasPagadas: pagados.reduce((s, p) => s + p.total, 0),
           comisiones,
           ventasPorProducto: Object.entries(porProducto).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.total - a.total),
