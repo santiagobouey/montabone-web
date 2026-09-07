@@ -16,7 +16,8 @@ function lunesDe(d: Date) {
   x.setHours(0, 0, 0, 0);
   return x;
 }
-const iso = (d: Date) => d.toISOString().split('T')[0];
+// Fecha local YYYY-MM-DD (sin usar UTC, para no correr el día según zona horaria)
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const TIPOS = [
   { label: '📦 Pedidos', tipo: 'pedido', color: '#e53935' },
