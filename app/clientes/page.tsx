@@ -45,6 +45,51 @@ export default function ClientesPage() {
   const [rut, setRut] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
 
+  // Pegar datos + IA
+  interface ClienteIA { nombre: string; nombre_contacto: string | null; telefono: string | null; direccion: string | null; rut: string | null; razon_social: string | null; giro: string | null; email: string | null; tipo: TipoCliente; }
+  const [showPegar, setShowPegar] = useState(false);
+  const [textoPegado, setTextoPegado] = useState('');
+  const [analizandoIA, setAnalizandoIA] = useState(false);
+  const [preview, setPreview] = useState<ClienteIA[]>([]);
+  const [guardandoLote, setGuardandoLote] = useState(false);
+
+  async function analizarTexto() {
+    if (!textoPegado.trim()) return;
+    setAnalizandoIA(true);
+    setPreview([]);
+    try {
+      const res = await fetch('/api/leer-clientes', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ texto: textoPegado }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo leer');
+      if (!data.clientes?.length) { alert('No se encontraron clientes en el texto'); }
+      setPreview(data.clientes || []);
+    } catch (e: unknown) {
+      alert('Error: ' + (e instanceof Error ? e.message : 'desconocido'));
+    }
+    setAnalizandoIA(false);
+  }
+
+  async function guardarLote() {
+    if (preview.length === 0) return;
+    setGuardandoLote(true);
+    try {
+      const { error } = await supabase.from('clientes').insert(preview.map((c) => ({
+        nombre: c.nombre, nombre_contacto: c.nombre_contacto, telefono: c.telefono || '', direccion: c.direccion || '',
+        rut: c.rut, razon_social: c.razon_social, giro: c.giro, email: c.email, tipo: c.tipo,
+      })));
+      if (error) throw new Error(error.message);
+      setShowPegar(false); setTextoPegado(''); setPreview([]);
+      await fetchClientes();
+      alert(`✅ ${preview.length} cliente${preview.length !== 1 ? 's' : ''} agregado${preview.length !== 1 ? 's' : ''}`);
+    } catch (e: unknown) {
+      alert('Error al guardar: ' + (e instanceof Error ? e.message : 'desconocido'));
+    }
+    setGuardandoLote(false);
+  }
+
   const fetchClientes = useCallback(async () => {
     try {
       const [clientesRes, pedidosRes] = await Promise.all([
@@ -156,11 +201,68 @@ export default function ClientesPage() {
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Clientes</h1>
           <p className="text-sm" style={{ color: '#6b7280' }}>{clientes.length} clientes registrados</p>
         </div>
-        <button onClick={abrirNuevo} className="px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>+ Nuevo</button>
+        <div className="flex gap-2">
+          <button onClick={() => { setShowPegar(true); setTextoPegado(''); setPreview([]); }} className="px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#2196f3' }}>📋 Pegar datos</button>
+          <button onClick={abrirNuevo} className="px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>+ Nuevo</button>
+        </div>
       </div>
 
       <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar cliente..."
         className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+      {/* Modal pegar datos + IA */}
+      {showPegar && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <div className="w-full md:max-w-lg rounded-t-2xl md:rounded-2xl p-6 overflow-y-auto max-h-[92vh]" style={{ backgroundColor: '#141414' }}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold" style={{ color: '#f5f5f5' }}>📋 Pegar datos de clientes</h2>
+              <button onClick={() => setShowPegar(false)} style={{ color: '#6b7280' }}>✕</button>
+            </div>
+            <p className="text-sm mb-3" style={{ color: '#6b7280' }}>Pega el texto con uno o varios clientes (de un mensaje, correo o lista) y la IA los ordena. Revisa antes de agregar.</p>
+
+            <textarea value={textoPegado} onChange={(e) => setTextoPegado(e.target.value)} rows={6}
+              placeholder="Ej: Carnicería Don Pepe, contacto Juan, +56912345678, Av. Siempre Viva 123, Maipú, RUT 76.123.456-7..."
+              className="w-full rounded-lg px-3 py-2 mb-3 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+            <button onClick={analizarTexto} disabled={analizandoIA || !textoPegado.trim()}
+              className="w-full py-2.5 rounded-lg font-bold text-sm text-white disabled:opacity-40 mb-3" style={{ backgroundColor: '#2196f3' }}>
+              {analizandoIA ? '🤖 Leyendo con IA...' : '🤖 Analizar con IA'}
+            </button>
+
+            {preview.length > 0 && (
+              <>
+                <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6b7280' }}>{preview.length} cliente{preview.length !== 1 ? 's' : ''} detectado{preview.length !== 1 ? 's' : ''} — revisa y edita</p>
+                <div className="space-y-3 mb-4">
+                  {preview.map((c, i) => (
+                    <div key={i} className="rounded-lg border p-3" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a' }}>
+                      <div className="flex justify-between items-start mb-2">
+                        <input value={c.nombre} onChange={(e) => setPreview((p) => p.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x))}
+                          className="flex-1 min-w-0 rounded px-2 py-1 text-sm font-semibold border mr-2" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+                        <button onClick={() => setPreview((p) => p.filter((_, j) => j !== i))} className="text-sm flex-shrink-0" style={{ color: '#e53935' }}>🗑️</button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {([['nombre_contacto', 'Contacto'], ['telefono', 'Teléfono'], ['rut', 'RUT'], ['direccion', 'Dirección'], ['razon_social', 'Razón social'], ['email', 'Email']] as const).map(([campo, lbl]) => (
+                          <input key={campo} value={(c[campo] as string) || ''} placeholder={lbl}
+                            onChange={(e) => setPreview((p) => p.map((x, j) => j === i ? { ...x, [campo]: e.target.value || null } : x))}
+                            className="rounded px-2 py-1 text-xs border" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+                        ))}
+                        <select value={c.tipo} onChange={(e) => setPreview((p) => p.map((x, j) => j === i ? { ...x, tipo: e.target.value as TipoCliente } : x))}
+                          className="rounded px-2 py-1 text-xs border col-span-2" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#f5f5f5' }}>
+                          {TIPOS.map((t) => <option key={t} value={t}>{TIPO_LABELS[t]}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={guardarLote} disabled={guardandoLote}
+                  className="w-full py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40" style={{ backgroundColor: '#4caf50' }}>
+                  {guardandoLote ? 'Agregando...' : `✅ Agregar ${preview.length} cliente${preview.length !== 1 ? 's' : ''}`}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2 mb-4">
         {(['todos', 'activo', 'inactivo'] as const).map((e) => (
