@@ -516,7 +516,9 @@ export default function PedidosPage() {
       }
     }
 
-    await supabase.from('pedidos').update({ estado }).eq('id', id);
+    // Registrar/limpiar fecha de pago según si queda en pagado o no
+    const hoyIso = new Date().toISOString().split('T')[0];
+    await supabase.from('pedidos').update({ estado, fecha_pago: estado === 'pagado' ? hoyIso : null }).eq('id', id);
     if (estado === 'pagado' && p) {
       await enviarEmail('pedido_pagado', {
         cliente: p.cliente?.nombre ?? '—',
@@ -543,7 +545,8 @@ export default function PedidosPage() {
         await ajustarStock(movimientos, +1); // vuelve atrás → devuelve stock
       }
     }
-    await supabase.from('ventas_detalle').update({ estado }).eq('id', id);
+    const hoyIsoDet = new Date().toISOString().split('T')[0];
+    await supabase.from('ventas_detalle').update({ estado, fecha_pago: estado === 'pagado' ? hoyIsoDet : null }).eq('id', id);
     await fetchVentasDetalle(inicioMes, finMes);
     await fetchArrastrados(inicioMes);
     const { data: prods } = await supabase.from('productos').select('*').order('nombre');

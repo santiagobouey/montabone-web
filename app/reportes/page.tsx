@@ -46,6 +46,7 @@ interface Reporte {
   cogsEstimado: number; costoUnitProm: number; facturasProv: number;
   // Situación
   cxc: number; cxp: number; invCosto: number; invVenta: number;
+  cobradoAnteriores: number; pendienteAnteriores: number;
 }
 
 export default function ReportesPage() {
@@ -84,6 +85,7 @@ export default function ReportesPage() {
           pedM, detM, eveM, mayM, cli, costM, prods, eveGastos,
           pedW, detW, eveW, mayW, costW,
           pedCxc, detCxc, costCxp, datosAnioRes,
+          pedCobAnt, detCobAnt, pedPendAnt, detPendAnt,
         ] = await Promise.all([
           supabase.from('pedidos').select('cliente_id, total, estado, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').gte('fecha', inicio).lte('fecha', fin),
           supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').gte('fecha', inicio).lte('fecha', fin),
@@ -104,6 +106,12 @@ export default function ReportesPage() {
           supabase.from('ventas_detalle').select('total').eq('estado', 'entregado'),
           supabase.from('costos_factura').select('monto').eq('pagada', false),
           supabase.from('datos_mensuales').select('mes, datos').eq('anio', anioFiltro),
+          // Cobrado este mes de ventas de meses anteriores (fecha_pago en el mes, venta previa)
+          supabase.from('pedidos').select('total').eq('estado', 'pagado').lt('fecha', inicio).gte('fecha_pago', inicio).lte('fecha_pago', fin),
+          supabase.from('ventas_detalle').select('total').eq('estado', 'pagado').lt('fecha', inicio).gte('fecha_pago', inicio).lte('fecha_pago', fin),
+          // Aún pendiente de cobro de meses anteriores (entregado sin pagar, venta previa al mes)
+          supabase.from('pedidos').select('total').eq('estado', 'entregado').lt('fecha', inicio),
+          supabase.from('ventas_detalle').select('total').eq('estado', 'entregado').lt('fecha', inicio),
         ]);
 
         // Datos manuales: mes seleccionado (a inputs) y todos los del año (para acumulado)
@@ -210,12 +218,15 @@ export default function ReportesPage() {
         const cxp = ((costCxp.data || []) as any[]).reduce((s, f) => s + f.monto, 0);
         const invCosto = ((prods.data || []) as any[]).reduce((s, p) => s + (p.stock || 0) * (p.costo || 0), 0);
         const invVenta = ((prods.data || []) as any[]).reduce((s, p) => s + (p.stock || 0) * (p.precio || 0), 0);
+        const cobradoAnteriores = ((pedCobAnt.data || []) as any[]).reduce((s, p) => s + p.total, 0) + ((detCobAnt.data || []) as any[]).reduce((s, v) => s + v.total, 0);
+        const pendienteAnteriores = ((pedPendAnt.data || []) as any[]).reduce((s, p) => s + p.total, 0) + ((detPendAnt.data || []) as any[]).reduce((s, v) => s + v.total, 0);
 
         setData({
           ventasTotales, ventasNetas, iva, costoVentas, margenBruto, comisiones, gastosEventos, gastosOper, utilidad,
           ventasMesAnterior, ventasAnioAnterior, ventasYTD, costosYTD, comisionesYTD,
           unidades, kilos, precioProm, precioPromKilo, porProducto, porCanal, topClientes,
           cogsEstimado, costoUnitProm, facturasProv, cxc, cxp, invCosto, invVenta,
+          cobradoAnteriores, pendienteAnteriores,
         });
       } catch {}
       setLoading(false);
@@ -419,6 +430,13 @@ export default function ReportesPage() {
             {inputManual('otros_ingresos')}
           </div>
           <p className="text-xs mt-2" style={{ color: '#6b7280' }}>El acumulado del año suma los gastos fijos y otros que hayas cargado en cada mes. Recuerda guardar.</p>
+        </Seccion>
+
+        {/* Cobros de meses anteriores */}
+        <Seccion titulo={`Cobros de meses anteriores (en ${MESES[mesFiltro]})`}>
+          <Fila k="✅ Cobrado este mes (ventas de meses anteriores)" v={fmt(d?.cobradoAnteriores ?? 0)} color="#4caf50" />
+          <Fila k="⏳ Aún deben de meses anteriores" v={fmt(d?.pendienteAnteriores ?? 0)} color="#e53935" />
+          <p className="text-xs mt-2" style={{ color: '#6b7280' }}>ℹ️ &quot;Cobrado este mes&quot; cuenta las ventas que quedaron pendientes de un mes anterior y que se marcaron pagadas dentro de {MESES[mesFiltro]}. Se registra desde ahora en adelante (los pagos marcados antes de este cambio no tienen fecha de pago).</p>
         </Seccion>
 
         {/* 6. Situación financiera */}
