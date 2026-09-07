@@ -14,6 +14,11 @@ const TIPO_LABELS: Record<string, string> = {
 };
 const COMPRADORES_EXCLUIDOS = ['santiago bouey', 'hernan torres'];
 const norm = (s: string | null) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+// No generan comisión: compras de los dueños ni ventas al cliente Kao
+const sinComision = (nombre: string | null | undefined) => {
+  const n = norm(nombre ?? '');
+  return COMPRADORES_EXCLUIDOS.includes(n) || n.includes('kao');
+};
 
 // Campos que se cargan manualmente cada mes
 const GASTOS_FIJOS: [string, string][] = [
@@ -97,7 +102,7 @@ export default function ReportesPage() {
           supabase.from('productos').select('nombre, stock, costo, precio'),
           supabase.from('eventos').select('fecha, gastos(monto)').gte('fecha', inicio).lte('fecha', fin),
           // Amplio (comparaciones + YTD): solo totales + fecha
-          supabase.from('pedidos').select('fecha, total').gte('fecha', rangoAmplio).lte('fecha', fin),
+          supabase.from('pedidos').select('fecha, total, cliente:clientes(nombre)').gte('fecha', rangoAmplio).lte('fecha', fin),
           supabase.from('ventas_detalle').select('fecha, total, nombre_comprador').gte('fecha', rangoAmplio).lte('fecha', fin),
           supabase.from('ventas_evento').select('fecha, total').gte('fecha', rangoAmplio).lte('fecha', fin),
           supabase.from('ventas_mayor').select('fecha, total').gte('fecha', rangoAmplio).lte('fecha', fin),
@@ -189,8 +194,9 @@ export default function ReportesPage() {
         const facturasProv = ((costM.data || []) as any[]).reduce((s, f) => s + f.monto, 0);
         const gastosEventos = ((eveGastos.data || []) as any[]).reduce((s, e) => s + (e.gastos || []).reduce((a: number, g: any) => a + g.monto, 0), 0);
         // Comisiones (5%): pedidos + detalle excepto compradores excluidos
-        const comisiones = Math.round(vPed * 0.05) +
-          ((detM.data || []) as any[]).filter((v) => !COMPRADORES_EXCLUIDOS.includes(norm(v.nombre_comprador))).reduce((s, v) => s + Math.round(v.total * 0.05), 0);
+        const comisiones =
+          ((pedM.data || []) as any[]).filter((p) => !sinComision(cliMap.get(p.cliente_id)?.nombre)).reduce((s, p) => s + Math.round(p.total * 0.05), 0) +
+          ((detM.data || []) as any[]).filter((v) => !sinComision(v.nombre_comprador)).reduce((s, v) => s + Math.round(v.total * 0.05), 0);
         const gastosOper = comisiones + gastosEventos;
         const costoVentas = facturasProv;
         const margenBruto = ventasNetas - costoVentas;
@@ -210,8 +216,8 @@ export default function ReportesPage() {
         const ventasYTD = sumaEntre(inicioAnio, fin);
         const costosYTD = ((costW.data || []) as any[]).filter((c) => c.created_at >= inicioAnio).reduce((s, c) => s + c.monto, 0);
         const comisionesYTD = Math.round(
-          ((pedW.data || []) as any[]).filter((r) => r.fecha >= inicioAnio).reduce((s, r) => s + r.total * 0.05, 0) +
-          ((detW.data || []) as any[]).filter((r) => r.fecha >= inicioAnio && !COMPRADORES_EXCLUIDOS.includes(norm(r.nombre_comprador))).reduce((s, r) => s + r.total * 0.05, 0)
+          ((pedW.data || []) as any[]).filter((r) => r.fecha >= inicioAnio && !sinComision(r.cliente?.nombre)).reduce((s, r) => s + r.total * 0.05, 0) +
+          ((detW.data || []) as any[]).filter((r) => r.fecha >= inicioAnio && !sinComision(r.nombre_comprador)).reduce((s, r) => s + r.total * 0.05, 0)
         );
 
         // ---- Situación ----
