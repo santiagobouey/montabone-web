@@ -47,6 +47,7 @@ interface Reporte {
   // Situación
   cxc: number; cxp: number; invCosto: number; invVenta: number;
   cobradoAnteriores: number; pendienteAnteriores: number;
+  stockUnidades: number;
 }
 
 export default function ReportesPage() {
@@ -218,6 +219,7 @@ export default function ReportesPage() {
         const cxp = ((costCxp.data || []) as any[]).reduce((s, f) => s + f.monto, 0);
         const invCosto = ((prods.data || []) as any[]).reduce((s, p) => s + (p.stock || 0) * (p.costo || 0), 0);
         const invVenta = ((prods.data || []) as any[]).reduce((s, p) => s + (p.stock || 0) * (p.precio || 0), 0);
+        const stockUnidades = ((prods.data || []) as any[]).reduce((s, p) => s + (p.stock || 0), 0);
         const cobradoAnteriores = ((pedCobAnt.data || []) as any[]).reduce((s, p) => s + p.total, 0) + ((detCobAnt.data || []) as any[]).reduce((s, v) => s + v.total, 0);
         const pendienteAnteriores = ((pedPendAnt.data || []) as any[]).reduce((s, p) => s + p.total, 0) + ((detPendAnt.data || []) as any[]).reduce((s, v) => s + v.total, 0);
 
@@ -226,7 +228,7 @@ export default function ReportesPage() {
           ventasMesAnterior, ventasAnioAnterior, ventasYTD, costosYTD, comisionesYTD,
           unidades, kilos, precioProm, precioPromKilo, porProducto, porCanal, topClientes,
           cogsEstimado, costoUnitProm, facturasProv, cxc, cxp, invCosto, invVenta,
-          cobradoAnteriores, pendienteAnteriores,
+          cobradoAnteriores, pendienteAnteriores, stockUnidades,
         });
       } catch {}
       setLoading(false);
@@ -340,6 +342,8 @@ export default function ReportesPage() {
           <Card label={utilidadFinal < 0 ? 'Pérdida del mes' : 'Utilidad del mes'} value={fmt(utilidadFinal)} color={utilidadFinal < 0 ? '#e53935' : '#4caf50'} />
           <Card label="vs mes / año ant." value={`${pctMes === null ? '—' : (pctMes >= 0 ? '+' : '') + pctMes + '%'} / ${pctAnio === null ? '—' : (pctAnio >= 0 ? '+' : '') + pctAnio + '%'}`} color="#9c27b0"
             sub={`Ant: ${fmt(d?.ventasMesAnterior ?? 0)} · ${fmt(d?.ventasAnioAnterior ?? 0)}`} />
+          <Card label="Stock actual (a venta)" value={fmt(d?.invVenta ?? 0)} color="#00bcd4"
+            sub={`${(d?.stockUnidades ?? 0).toLocaleString('es-CL')} paq. · queda ${(() => { const st = d?.stockUnidades ?? 0; const ve = d?.unidades ?? 0; return st + ve > 0 ? Math.round(st / (st + ve) * 100) : 0; })()}%`} />
         </div>
 
         {/* 2. Ventas */}
