@@ -72,6 +72,10 @@ export default function ReportesPage() {
     setSavingManual(true);
     const datos: Record<string, number> = {};
     for (const [k] of [...GASTOS_FIJOS, ...SITUACION_MANUAL, ['otros_ingresos', '']]) datos[k] = numOf(manual, k);
+    // Capturar el stock actual como "stock al cierre" de este mes (solo si es el mes en curso)
+    const esActual = anioFiltro === hoyDate.getFullYear() && mesFiltro === hoyDate.getMonth();
+    if (esActual && data) { datos.stock_valor = data.invVenta; datos.stock_unidades = data.stockUnidades; }
+    else { if (numOf(manual, 'stock_valor')) datos.stock_valor = numOf(manual, 'stock_valor'); if (numOf(manual, 'stock_unidades')) datos.stock_unidades = numOf(manual, 'stock_unidades'); }
     await supabase.from('datos_mensuales').upsert({ anio: anioFiltro, mes: mesFiltro, datos }, { onConflict: 'anio,mes' });
     setSavingManual(false);
     setGuardadoManual(true);
@@ -248,6 +252,7 @@ export default function ReportesPage() {
   const pctMes = pct(d?.ventasTotales ?? 0, d?.ventasMesAnterior ?? 0);
   const pctAnio = pct(d?.ventasTotales ?? 0, d?.ventasAnioAnterior ?? 0);
   const totalVentasClientes = (d?.topClientes ?? []).reduce((s, c) => s + c.total, 0);
+  const esMesActual = anioFiltro === hoyDate.getFullYear() && mesFiltro === hoyDate.getMonth();
   const netaYTD = neto(d?.ventasYTD ?? 0);
   const margenYTD = netaYTD - (d?.costosYTD ?? 0);
 
@@ -348,8 +353,15 @@ export default function ReportesPage() {
           <Card label={utilidadFinal < 0 ? 'Pérdida del mes' : 'Utilidad del mes'} value={fmt(utilidadFinal)} color={utilidadFinal < 0 ? '#e53935' : '#4caf50'} />
           <Card label="vs mes / año ant." value={`${pctMes === null ? '—' : (pctMes >= 0 ? '+' : '') + pctMes + '%'} / ${pctAnio === null ? '—' : (pctAnio >= 0 ? '+' : '') + pctAnio + '%'}`} color="#9c27b0"
             sub={`Ant: ${fmt(d?.ventasMesAnterior ?? 0)} · ${fmt(d?.ventasAnioAnterior ?? 0)}`} />
-          <Card label="Stock actual (a venta)" value={fmt(d?.invVenta ?? 0)} color="#00bcd4"
-            sub={`${(d?.stockUnidades ?? 0).toLocaleString('es-CL')} paq. · queda ${(() => { const st = d?.stockUnidades ?? 0; const ve = d?.unidades ?? 0; return st + ve > 0 ? Math.round(st / (st + ve) * 100) : 0; })()}%`} />
+          {esMesActual ? (
+            <Card label="Stock actual (a venta)" value={fmt(d?.invVenta ?? 0)} color="#00bcd4"
+              sub={`${(d?.stockUnidades ?? 0).toLocaleString('es-CL')} paq. · a hoy · queda ${(() => { const st = d?.stockUnidades ?? 0; const ve = d?.unidades ?? 0; return st + ve > 0 ? Math.round(st / (st + ve) * 100) : 0; })()}%`} />
+          ) : (numOf(manual, 'stock_valor') > 0 || numOf(manual, 'stock_unidades') > 0) ? (
+            <Card label="Stock al cierre del mes" value={fmt(numOf(manual, 'stock_valor'))} color="#00bcd4"
+              sub={`${numOf(manual, 'stock_unidades').toLocaleString('es-CL')} paq.`} />
+          ) : (
+            <Card label="Stock del mes" value="—" color="#6b7280" sub="Sin registro (guarda los datos ese mes)" />
+          )}
         </div>
 
         {/* 2. Ventas */}
