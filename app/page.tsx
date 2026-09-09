@@ -109,7 +109,7 @@ export default function DashboardPage() {
           supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_evento').select('total, cantidad, precio_unitario, producto:productos(nombre, costo), evento:eventos(fecha)').gte('eventos.fecha', inicioMes).lte('eventos.fecha', finMes),
-          supabase.from('clientes').select('id, nombre, tipo, activo_manual'),
+          supabase.from('clientes').select('id, nombre, tipo, activo_manual, es_empresa'),
           supabase.from('productos').select('*').order('nombre'),
           supabase.from('muestras').select('cantidad, producto:productos(nombre)'),
           supabase.from('pedidos').select('id').in('estado', ['pendiente', 'preparado']),
@@ -234,7 +234,8 @@ export default function DashboardPage() {
         for (const p of pedidosCliente) {
           if (!ultimaCompraMap[p.cliente_id]) ultimaCompraMap[p.cliente_id] = p.fecha;
         }
-        const puntosVenta: PuntoVenta[] = clientes.map((c: any) => {
+        // Las empresas no cuentan como puntos de venta
+        const puntosVenta: PuntoVenta[] = clientes.filter((c: any) => !c.es_empresa).map((c: any) => {
           const ultimaCompra = ultimaCompraMap[c.id] || null;
           const activoManual = c.activo_manual ?? null;
           const activo = activoManual !== null ? activoManual : (ultimaCompra ? ultimaCompra >= hace60 : false);

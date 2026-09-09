@@ -44,6 +44,7 @@ export default function ClientesPage() {
   const [activoManual, setActivoManual] = useState<boolean | null>(null);
   const [rut, setRut] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
+  const [esEmpresa, setEsEmpresa] = useState(false);
 
   // Pegar datos + IA
   interface ClienteIA { nombre: string; nombre_contacto: string | null; telefono: string | null; direccion: string | null; rut: string | null; razon_social: string | null; giro: string | null; email: string | null; tipo: TipoCliente; }
@@ -110,7 +111,7 @@ export default function ClientesPage() {
   function abrirNuevo() {
     setEditando(null); setNombre(''); setNombreContacto(''); setTelefono(''); setDireccion('');
     setComuna(''); setTipo('otro'); setObservaciones(''); setMuestraEntregada(false);
-    setActivoManual(null); setRut(''); setRazonSocial(''); setConfirmandoEliminar(false);
+    setActivoManual(null); setRut(''); setRazonSocial(''); setEsEmpresa(false); setConfirmandoEliminar(false);
     setShowModal(true);
   }
 
@@ -120,6 +121,7 @@ export default function ClientesPage() {
     setTipo(c.tipo ?? 'otro');
     setObservaciones(c.observaciones || ''); setMuestraEntregada(c.muestra_entregada ?? false);
     setActivoManual(c.activo_manual ?? null); setRut(c.rut || ''); setRazonSocial(c.razon_social || '');
+    setEsEmpresa(c.es_empresa ?? false);
     setConfirmandoEliminar(false);
     setShowModal(true);
   }
@@ -161,6 +163,7 @@ export default function ClientesPage() {
         activo_manual: activoManual ?? null,
         rut: rut || null,
         razon_social: razonSocial || null,
+        es_empresa: esEmpresa,
       };
       if (editando) {
         const { error } = await supabase.from('clientes').update(payload).eq('id', editando.id);
@@ -290,13 +293,14 @@ export default function ClientesPage() {
                   <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: '#2a2a2a', color: '#9ca3af' }}>
                     {TIPO_LABELS[c.tipo] ?? c.tipo}
                   </span>
-                  <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
-                    style={{
-                      backgroundColor: esActivo(c) ? '#4caf50' + '20' : '#e53935' + '20',
-                      color: esActivo(c) ? '#4caf50' : '#e53935',
-                    }}>
-                    {esActivo(c) ? '● Activo' : '● Inactivo'}
-                  </span>
+                  {c.es_empresa ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{ backgroundColor: '#2196f3' + '20', color: '#2196f3' }}>🏢 Empresa</span>
+                  ) : (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                      style={{ backgroundColor: esActivo(c) ? '#4caf50' + '20' : '#e53935' + '20', color: esActivo(c) ? '#4caf50' : '#e53935' }}>
+                      {esActivo(c) ? '● Activo' : '● Inactivo'}
+                    </span>
+                  )}
                   {ultimasCompras[c.id] && (
                     <span className="text-xs" style={{ color: '#6b7280' }}>
                       Última compra: {new Date(ultimasCompras[c.id] + 'T12:00:00').toLocaleDateString('es-CL')}
@@ -352,6 +356,19 @@ export default function ClientesPage() {
                 ))}
               </select>
             </div>
+
+            <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Categoría</label>
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <button type="button" onClick={() => setEsEmpresa(false)} className="py-2 rounded-lg border text-sm font-semibold"
+                style={{ backgroundColor: !esEmpresa ? '#4caf50' + '20' : 'transparent', borderColor: !esEmpresa ? '#4caf50' : '#2a2a2a', color: !esEmpresa ? '#4caf50' : '#6b7280' }}>
+                🏪 Cliente (punto de venta)
+              </button>
+              <button type="button" onClick={() => setEsEmpresa(true)} className="py-2 rounded-lg border text-sm font-semibold"
+                style={{ backgroundColor: esEmpresa ? '#2196f3' + '20' : 'transparent', borderColor: esEmpresa ? '#2196f3' : '#2a2a2a', color: esEmpresa ? '#2196f3' : '#6b7280' }}>
+                🏢 Empresa
+              </button>
+            </div>
+            {esEmpresa && <p className="text-xs mb-3" style={{ color: '#6b7280' }}>Las empresas no se cuentan como puntos de venta activos/inactivos.</p>}
 
             <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Tipo</label>
             <div className="flex flex-wrap gap-2 mb-3">

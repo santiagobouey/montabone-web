@@ -24,6 +24,7 @@ export interface Cliente {
   activo_manual: boolean | null;
   rut: string | null;
   razon_social: string | null;
+  es_empresa: boolean;
   created_at: string;
 }
 
