@@ -16,7 +16,7 @@ const ESTADO_COLORS: Record<string, string> = {
 const ESTADOS: EstadoPedido[] = ['pendiente', 'preparado', 'entregado', 'pagado'];
 // Estados en los que el pedido ya salió de bodega → el stock está descontado
 const CONSUMEN_STOCK: string[] = ['entregado', 'pagado'];
-const PRECIOS_PRESET = [2940, 3300, 3760, 3990, 4000, 4990, 4995, 5990];
+const PRECIOS_PRESET = [2940, 3300, 3760, 3990, 4000, 4193, 4990, 4995, 5990];
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 interface ItemPedido {
