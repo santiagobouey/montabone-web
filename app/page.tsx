@@ -106,6 +106,8 @@ export default function DashboardPage() {
           facturasLoteRes,
           mayorLoteRes,
           seguimientosRes,
+          vendPedRes,
+          vendDetRes,
         ] = await Promise.all([
           supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').eq('estado', 'pagado').gte('fecha', inicioMes).lte('fecha', finMes),
@@ -129,6 +131,9 @@ export default function DashboardPage() {
           supabase.from('costos_factura').select('monto').is('periodo_id', null),
           supabase.from('ventas_mayor').select('total, costo').is('periodo_id', null),
           supabase.from('mermas').select('destino_nombre, seguimiento_fecha, producto:productos(nombre)').eq('motivo', 'muestra').eq('seguimiento_hecho', false).not('seguimiento_fecha', 'is', null).lte('seguimiento_fecha', hoyStr),
+          // Vendedores del mes (todas las ventas del mes, cualquier estado)
+          supabase.from('pedidos').select('total, vendedor, cliente:clientes(nombre)').gte('fecha', inicioMes).lte('fecha', finMes),
+          supabase.from('ventas_detalle').select('total, vendedor, nombre_comprador').gte('fecha', inicioMes).lte('fecha', finMes),
         ]);
 
         const pedidosMes = (pedidosMesRes.data || []) as any[];
@@ -197,8 +202,8 @@ export default function DashboardPage() {
           vendMap[v].ventas += total;
           if (comisiona) vendMap[v].comision += Math.round(total * 0.05);
         };
-        for (const p of (pedidosLoteRes.data || []) as any[]) acumVend(p.vendedor, p.total, !sinComision(p.cliente?.nombre));
-        for (const v of (detalleLoteRes.data || []) as any[]) acumVend(v.vendedor, v.total, !sinComision(v.nombre_comprador));
+        for (const p of (vendPedRes.data || []) as any[]) acumVend(p.vendedor, p.total, !sinComision(p.cliente?.nombre));
+        for (const v of (vendDetRes.data || []) as any[]) acumVend(v.vendedor, v.total, !sinComision(v.nombre_comprador));
         const vendedores = Object.entries(vendMap).map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.ventas - a.ventas);
         // Utilidad mínima esperada = lo ya ganado en el lote + la utilidad que queda por vender del stock
         const utilidadEsperada = utilidadLote + (valorStock - costoStock);
@@ -384,7 +389,7 @@ export default function DashboardPage() {
       {(stats?.vendedores.length ?? 0) > 0 && (
         <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
           <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
-            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>🧑‍💼 Vendedores (lote actual)</p>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>🧑‍💼 Vendedores ({MESES[new Date().getMonth()]})</p>
           </div>
           {(stats?.vendedores ?? []).map((v, i) => (
             <div key={v.nombre} className="flex items-center justify-between px-4 py-3" style={{ borderBottom: i < (stats?.vendedores.length ?? 0) - 1 ? '1px solid #2a2a2a' : 'none' }}>
