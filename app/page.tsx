@@ -32,6 +32,7 @@ interface Stats {
   paquetesStock: number;
   paquetesVendidos: number;
   pctVendido: number;
+  vendedores: { nombre: string; ventas: number; comision: number }[];
   utilidadEsperada: number;
   pedidosMes: number;
   ticketPromedio: number;
@@ -122,8 +123,8 @@ export default function DashboardPage() {
           supabase.from('pedidos').select('estado, total').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_detalle').select('estado, total').gte('fecha', inicioMes).lte('fecha', finMes),
           // Lote actual (período sin cerrar): todo lo que aún no ha sido archivado
-          supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad)').is('periodo_id', null),
-          supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad)').is('periodo_id', null),
+          supabase.from('pedidos').select('total, vendedor, cliente:clientes(nombre), detalle:detalle_pedido(cantidad)').is('periodo_id', null),
+          supabase.from('ventas_detalle').select('total, vendedor, nombre_comprador, items:items_venta_detalle(cantidad)').is('periodo_id', null),
           supabase.from('ventas_evento').select('total, cantidad').is('periodo_id', null),
           supabase.from('costos_factura').select('monto').is('periodo_id', null),
           supabase.from('ventas_mayor').select('total, costo').is('periodo_id', null),
@@ -180,6 +181,25 @@ export default function DashboardPage() {
         const pctVendido = (paquetesVendidos + paquetesStock) > 0
           ? Math.round((paquetesVendidos / (paquetesVendidos + paquetesStock)) * 100)
           : 0;
+
+        // Ventas y comisiones por vendedor (lote actual)
+        // No generan comisión: cliente Kao ni compras de los dueños
+        const normNom = (s: string | null | undefined) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+        const sinComision = (nombre: string | null | undefined) => {
+          const n = normNom(nombre);
+          return n === 'santiago bouey' || n === 'hernan torres' || n.includes('kao');
+        };
+        const vendMap: Record<string, { ventas: number; comision: number }> = {};
+        const acumVend = (vendedor: string | null, total: number, comisiona: boolean) => {
+          const v = (vendedor || '').trim();
+          if (!v) return;
+          if (!vendMap[v]) vendMap[v] = { ventas: 0, comision: 0 };
+          vendMap[v].ventas += total;
+          if (comisiona) vendMap[v].comision += Math.round(total * 0.05);
+        };
+        for (const p of (pedidosLoteRes.data || []) as any[]) acumVend(p.vendedor, p.total, !sinComision(p.cliente?.nombre));
+        for (const v of (detalleLoteRes.data || []) as any[]) acumVend(v.vendedor, v.total, !sinComision(v.nombre_comprador));
+        const vendedores = Object.entries(vendMap).map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.ventas - a.ventas);
         // Utilidad mínima esperada = lo ya ganado en el lote + la utilidad que queda por vender del stock
         const utilidadEsperada = utilidadLote + (valorStock - costoStock);
 
@@ -272,6 +292,7 @@ export default function DashboardPage() {
           paquetesStock,
           paquetesVendidos,
           pctVendido,
+          vendedores,
           utilidadEsperada,
           pedidosPorEstado,
           detallePorEstado,
@@ -358,6 +379,33 @@ export default function DashboardPage() {
           </div>
         );
       })()}
+
+      {/* Vendedores: ventas y comisiones (lote actual) */}
+      {(stats?.vendedores.length ?? 0) > 0 && (
+        <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>🧑‍💼 Vendedores (lote actual)</p>
+          </div>
+          {(stats?.vendedores ?? []).map((v, i) => (
+            <div key={v.nombre} className="flex items-center justify-between px-4 py-3" style={{ borderBottom: i < (stats?.vendedores.length ?? 0) - 1 ? '1px solid #2a2a2a' : 'none' }}>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>{v.nombre}</p>
+                <p className="text-xs" style={{ color: '#6b7280' }}>Comisión 5%</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="text-xs" style={{ color: '#6b7280' }}>Vendido</p>
+                  <p className="text-sm font-extrabold" style={{ color: '#4caf50' }}>{fmt(v.ventas)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs" style={{ color: '#6b7280' }}>Comisión</p>
+                  <p className="text-sm font-extrabold" style={{ color: '#ff9800' }}>{fmt(v.comision)}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Estadísticas del mes */}
       <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
