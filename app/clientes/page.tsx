@@ -45,6 +45,42 @@ export default function ClientesPage() {
   const [rut, setRut] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
   const [esEmpresa, setEsEmpresa] = useState(false);
+  const [escaneando, setEscaneando] = useState(false);
+
+  // Escanear boleta/factura con foto y autorrellenar el formulario
+  async function escanearBoleta(file: File) {
+    setEscaneando(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch('/api/leer-cliente-foto', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ base64, mediaType: file.type }),
+      });
+      const c = await res.json();
+      if (!res.ok) throw new Error(c.error || 'No se pudo leer');
+      if (c.nombre) setNombre(c.nombre);
+      if (c.nombre_contacto) setNombreContacto(c.nombre_contacto);
+      if (c.telefono) setTelefono(c.telefono);
+      if (c.direccion) setDireccion(c.direccion);
+      if (c.rut) setRut(c.rut);
+      if (c.razon_social) setRazonSocial(c.razon_social);
+      if (c.tipo) setTipo(c.tipo);
+      // Comuna: intentar calzar con la lista
+      if (c.comuna) {
+        const match = COMUNAS_SANTIAGO.find((x) => x.toLowerCase() === String(c.comuna).toLowerCase().trim());
+        if (match) setComuna(match);
+        else if (c.direccion) setDireccion(`${c.direccion}, ${c.comuna}`);
+      }
+    } catch (e: unknown) {
+      alert('Error: ' + (e instanceof Error ? e.message : 'desconocido'));
+    }
+    setEscaneando(false);
+  }
 
   // Pegar datos + IA
   interface ClienteIA { nombre: string; nombre_contacto: string | null; telefono: string | null; direccion: string | null; rut: string | null; razon_social: string | null; giro: string | null; email: string | null; tipo: TipoCliente; }
@@ -325,6 +361,21 @@ export default function ClientesPage() {
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-bold text-lg" style={{ color: '#f5f5f5' }}>{editando ? 'Editar Cliente' : 'Nuevo Cliente'}</h2>
               <button onClick={() => { setShowModal(false); setConfirmandoEliminar(false); }} style={{ color: '#6b7280' }}>✕</button>
+            </div>
+
+            {/* Escanear boleta/factura con foto */}
+            <div className="rounded-lg border p-3 mb-4" style={{ borderColor: '#2196f3' + '40', backgroundColor: '#2196f3' + '10' }}>
+              <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#2196f3' }}>📷 Escanear boleta/factura</label>
+              <input type="file" accept="image/*" capture="environment"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) escanearBoleta(f); }}
+                className="w-full text-sm" style={{ color: '#9ca3af' }} disabled={escaneando} />
+              {escaneando && (
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  <p className="text-xs" style={{ color: '#2196f3' }}>Leyendo con IA...</p>
+                </div>
+              )}
+              <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Saca la foto y se rellenan RUT, dirección, comuna, etc. Revisa antes de guardar.</p>
             </div>
 
             <div className="mb-3">
