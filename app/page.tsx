@@ -117,7 +117,7 @@ export default function DashboardPage() {
           supabase.from('muestras').select('cantidad, producto:productos(nombre)'),
           supabase.from('pedidos').select('id').in('estado', ['pendiente', 'preparado']),
           supabase.from('pedidos').select('total').eq('estado', 'entregado'),
-          supabase.from('prospectos').select('id, nombre_local, nombre_contacto, proxima_visita').in('estado', ['potencial', 'contactado', 'pendiente']),
+          supabase.from('prospectos').select('id, nombre_local, nombre_contacto, proxima_visita').in('estado', ['potencial', 'contactado', 'pendiente', 'no_interesado']),
           supabase.from('pedidos').select('cliente_id, fecha').order('fecha', { ascending: false }),
           supabase.from('costos_factura').select('monto').gte('created_at', inicioMes).lte('created_at', finMes + 'T23:59:59'),
           supabase.from('ventas_detalle').select('id, total').in('estado', ['pendiente', 'preparado']),

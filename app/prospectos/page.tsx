@@ -219,10 +219,17 @@ export default function ProspectosPage() {
     setConvirtiendo(false);
   }
 
-  async function handleNoInteres() {
+  // meses = 0 → no volver a contactar; 3/6/12 → agenda para insistir en ese plazo
+  async function handleNoInteres(meses: number) {
     if (!editando) return;
+    let proxima: string | null = null;
+    if (meses > 0) {
+      const f = new Date();
+      f.setMonth(f.getMonth() + meses);
+      proxima = f.toISOString().split('T')[0];
+    }
     try {
-      await supabase.from('prospectos').update({ estado: 'no_interesado', proxima_visita: null }).eq('id', editando.id);
+      await supabase.from('prospectos').update({ estado: 'no_interesado', proxima_visita: proxima }).eq('id', editando.id);
       cerrarModal();
       await fetchProspectos();
     } catch (e: unknown) {
@@ -459,11 +466,21 @@ export default function ProspectosPage() {
             {/* Confirmar: no le interesó */}
             {editando && confirmandoNoInteres && (
               <div className="rounded-lg border p-3" style={{ borderColor: '#ff9800' + '60', backgroundColor: '#ff9800' + '10' }}>
-                <p className="text-sm font-semibold text-center mb-3" style={{ color: '#f5f5f5' }}>¿Marcar {editando.nombre_local} como no interesado?</p>
-                <div className="flex gap-2">
-                  <button onClick={() => setConfirmandoNoInteres(false)} className="flex-1 py-2 rounded-lg font-bold text-sm border" style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>Cancelar</button>
-                  <button onClick={handleNoInteres} className="flex-1 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#ff9800' }}>Sí, marcar</button>
+                <p className="text-sm font-semibold text-center mb-1" style={{ color: '#f5f5f5' }}>{editando.nombre_local} dijo que no</p>
+                <p className="text-xs text-center mb-3" style={{ color: '#9ca3af' }}>¿Cuándo quieres volver a insistir?</p>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {[3, 6, 12].map((m) => (
+                    <button key={m} onClick={() => handleNoInteres(m)}
+                      className="py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#ff9800' }}>
+                      {m === 12 ? '1 año' : `${m} meses`}
+                    </button>
+                  ))}
                 </div>
+                <button onClick={() => handleNoInteres(0)}
+                  className="w-full py-2 rounded-lg font-bold text-sm border mb-2" style={{ color: '#e53935', borderColor: '#e53935' + '60', backgroundColor: '#e5393510' }}>
+                  No volver a contactar
+                </button>
+                <button onClick={() => setConfirmandoNoInteres(false)} className="w-full py-2 rounded-lg font-bold text-sm border" style={{ color: '#9ca3af', borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>Cancelar</button>
               </div>
             )}
 
