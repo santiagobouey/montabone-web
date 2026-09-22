@@ -32,7 +32,7 @@ interface Merma {
   seguimiento_fecha: string | null;
   seguimiento_hecho: boolean;
   observaciones: string | null;
-  producto: { nombre: string; precio: number } | null;
+  producto: { nombre: string; precio: number; costo: number } | null;
   cliente: { nombre: string } | null;
   influencer: { nombre: string } | null;
 }
@@ -67,7 +67,7 @@ export default function MermaPage() {
 
   const fetchDatos = useCallback(async () => {
     const [merRes, prodRes, cliRes] = await Promise.all([
-      supabase.from('mermas').select('*, producto:productos(nombre, precio), cliente:clientes(nombre), influencer:influencers(nombre)').order('fecha', { ascending: false }),
+      supabase.from('mermas').select('*, producto:productos(nombre, precio, costo), cliente:clientes(nombre), influencer:influencers(nombre)').order('fecha', { ascending: false }),
       supabase.from('productos').select('id, nombre, formato, stock, precio').order('nombre'),
       supabase.from('clientes').select('id, nombre').order('nombre'),
     ]);
@@ -195,6 +195,8 @@ export default function MermaPage() {
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   const valorDe = (m: Merma) => (m.producto?.precio ?? 0) * m.cantidad;
+  const costoDe = (m: Merma) => (m.producto?.costo ?? 0) * m.cantidad;
+  const costoTotalMerma = mermas.reduce((s, m) => s + costoDe(m), 0);
   const totalDevolucion = mermas.filter((m) => m.motivo === 'devolucion');
   const totalDegustacion = mermas.filter((m) => m.motivo === 'degustacion');
   const totalMuestra = mermas.filter((m) => m.motivo === 'muestra');
@@ -278,6 +280,13 @@ export default function MermaPage() {
       )}
 
       {/* Totales */}
+      {/* Costo total en mermas */}
+      <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#e53935' }}>
+        <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>💸 Costo total en mermas</p>
+        <p className="text-3xl font-extrabold" style={{ color: '#e53935' }}>{fmt(costoTotalMerma)}</p>
+        <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Lo que costó producir/comprar todo lo mermado</p>
+      </div>
+
       <div className="grid grid-cols-2 gap-3 mb-6">
         {[
           { label: '↩️ Devoluciones', lista: totalDevolucion, color: '#e53935' },
@@ -289,7 +298,7 @@ export default function MermaPage() {
           <div key={t.label} className="rounded-xl border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: t.color }}>
             <p className="text-xs" style={{ color: '#6b7280' }}>{t.label}</p>
             <p className="text-2xl font-extrabold" style={{ color: t.color }}>{t.lista.reduce((s, m) => s + m.cantidad, 0)} <span className="text-sm">uds</span></p>
-            <p className="text-xs" style={{ color: '#6b7280' }}>{fmt(t.lista.reduce((s, m) => s + valorDe(m), 0))}</p>
+            <p className="text-xs" style={{ color: '#6b7280' }}>Costo: {fmt(t.lista.reduce((s, m) => s + costoDe(m), 0))}</p>
           </div>
         ))}
       </div>
@@ -325,7 +334,7 @@ export default function MermaPage() {
                             const icono = m.motivo === 'muestra_influencer' ? '📣' : '🏪';
                             return <p className="text-sm" style={{ color: '#9ca3af' }}>{icono} {nombre}</p>;
                           })()}
-                          <p className="text-xs" style={{ color: '#6b7280' }}>Valor venta: {fmt(valorDe(m))}</p>
+                          <p className="text-xs" style={{ color: '#6b7280' }}>Valor venta: {fmt(valorDe(m))} · <span style={{ color: '#e53935' }}>Costo: {fmt(costoDe(m))}</span></p>
                           {m.observaciones && <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{m.observaciones}</p>}
                         </div>
                         <div className="flex gap-2 flex-shrink-0">
