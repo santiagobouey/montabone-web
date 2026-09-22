@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import PieChart, { Slice } from '@/components/PieChart';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 interface Venta { fecha: string; total: number; tipo: 'pedido' | 'detalle' | 'evento' | 'mayor'; }
+
+const TIPO_LABELS: Record<string, string> = {
+  carniceria: 'Carnicerías', distribuidor: 'Distribuidores', restaurante: 'Restaurantes',
+  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', otro: 'Otros',
+};
 
 function lunesDe(d: Date) {
   const x = new Date(d);
@@ -33,6 +39,41 @@ export default function VentasSemanaPage() {
   const [semanaSel, setSemanaSel] = useState(iso(lunesDe(new Date())));
   const hoy = new Date();
   const [mesSel, setMesSel] = useState(`${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`);
+  const [pieProductos, setPieProductos] = useState<Slice[]>([]);
+  const [pieClientes, setPieClientes] = useState<Slice[]>([]);
+  const [pieDetalle, setPieDetalle] = useState<Slice[]>([]);
+  const [pieCategorias, setPieCategorias] = useState<Slice[]>([]);
+
+  // Gráficos de torta del mes seleccionado (vista mensual)
+  useEffect(() => {
+    async function loadPies() {
+      const [y, m] = mesSel.split('-').map(Number);
+      const ini = `${mesSel}-01`;
+      const fin = `${mesSel}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+      const [pedR, detR, eveR, cliR] = await Promise.all([
+        supabase.from('pedidos').select('total, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))').gte('fecha', ini).lte('fecha', fin),
+        supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))').gte('fecha', ini).lte('fecha', fin),
+        supabase.from('ventas_evento').select('total, producto:productos(nombre)').gte('fecha', ini).lte('fecha', fin),
+        supabase.from('clientes').select('tipo'),
+      ]);
+      const pedidos = (pedR.data || []) as any[], detalle = (detR.data || []) as any[], eventos = (eveR.data || []) as any[];
+      const prodMap: Record<string, number> = {};
+      for (const p of pedidos) for (const d of (p.detalle || [])) prodMap[d.producto?.nombre ?? '—'] = (prodMap[d.producto?.nombre ?? '—'] || 0) + d.cantidad * d.precio_unitario;
+      for (const v of detalle) for (const i of (v.items || [])) prodMap[i.producto?.nombre ?? '—'] = (prodMap[i.producto?.nombre ?? '—'] || 0) + i.cantidad * i.precio_unitario;
+      for (const v of eventos) prodMap[v.producto?.nombre ?? '—'] = (prodMap[v.producto?.nombre ?? '—'] || 0) + v.total;
+      setPieProductos(Object.entries(prodMap).map(([label, value]) => ({ label, value })));
+      const cliMap: Record<string, number> = {};
+      for (const p of pedidos) { const n = p.cliente?.nombre ?? 'Sin cliente'; cliMap[n] = (cliMap[n] || 0) + p.total; }
+      setPieClientes(Object.entries(cliMap).map(([label, value]) => ({ label, value })));
+      const detMap: Record<string, number> = {};
+      for (const v of detalle) { const n = (v.nombre_comprador || '').trim() || 'Sin nombre'; detMap[n] = (detMap[n] || 0) + v.total; }
+      setPieDetalle(Object.entries(detMap).map(([label, value]) => ({ label, value })));
+      const catMap: Record<string, number> = {};
+      for (const c of (cliR.data || []) as any[]) { const l = TIPO_LABELS[c.tipo] ?? 'Otros'; catMap[l] = (catMap[l] || 0) + 1; }
+      setPieCategorias(Object.entries(catMap).map(([label, value]) => ({ label, value })));
+    }
+    if (vista === 'mensual') loadPies();
+  }, [mesSel, vista]);
 
   useEffect(() => {
     async function load() {
@@ -196,8 +237,16 @@ export default function VentasSemanaPage() {
           {/* Por tipo */}
           <PorTipo lista={porTipoDe(ventasMes, totalMes)} vacio="No hubo ventas este mes" />
 
+          {/* Gráficos de torta del mes */}
+          <div className="space-y-3 mt-4">
+            <PieChart titulo="🥧 Ventas por producto" data={pieProductos} />
+            <PieChart titulo="🥧 Ventas por cliente" data={pieClientes} />
+            <PieChart titulo="🥧 Ventas al detalle (por comprador)" data={pieDetalle} />
+            <PieChart titulo="🥧 Clientes por categoría" data={pieCategorias} formato="num" />
+          </div>
+
           {/* Comparativa */}
-          <ListaComparativa titulo="Últimos meses — toca para ver" items={meses} sel={mesSel} onSel={setMesSel} actualKey={meses[0].key} />
+          <div className="mt-4"><ListaComparativa titulo="Últimos meses — toca para ver" items={meses} sel={mesSel} onSel={setMesSel} actualKey={meses[0].key} /></div>
         </>
       )}
     </div>

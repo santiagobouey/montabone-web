@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import PieChart, { Slice } from '@/components/PieChart';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const TIPO_LABELS: Record<string, string> = {
+  carniceria: 'Carnicerías', distribuidor: 'Distribuidores', restaurante: 'Restaurantes',
+  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', otro: 'Otros',
+};
 
 interface ResumenMes {
   pedidos: number;
@@ -28,6 +33,10 @@ export default function VentasMesPage() {
   const [filasExport, setFilasExport] = useState<FilaExport[]>([]);
   const [loading, setLoading] = useState(true);
   const [ventasPorMes, setVentasPorMes] = useState<number[]>(Array(12).fill(0));
+  const [pieProductos, setPieProductos] = useState<Slice[]>([]);
+  const [pieClientes, setPieClientes] = useState<Slice[]>([]);
+  const [pieDetalle, setPieDetalle] = useState<Slice[]>([]);
+  const [pieCategorias, setPieCategorias] = useState<Slice[]>([]);
 
   const hoy = new Date();
   const [mes, setMes] = useState(hoy.getMonth());
@@ -51,7 +60,7 @@ export default function VentasMesPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [pedidosRes, detalleRes, eventosRes] = await Promise.all([
+        const [pedidosRes, detalleRes, eventosRes, clientesRes] = await Promise.all([
           supabase
             .from('pedidos')
             .select('fecha, total, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))')
@@ -71,11 +80,31 @@ export default function VentasMesPage() {
             .select('total, cantidad, precio_unitario, producto:productos(nombre), evento:eventos(nombre, fecha)')
             .gte('eventos.fecha', inicioMes)
             .lte('eventos.fecha', finMes),
+          supabase.from('clientes').select('tipo'),
         ]);
 
         const pedidos = (pedidosRes.data || []) as any[];
         const detalle = (detalleRes.data || []) as any[];
         const eventosRaw = ((eventosRes.data || []) as any[]).filter((v) => v.evento);
+
+        // ---- Gráficos de torta ----
+        const prodMap: Record<string, number> = {};
+        for (const p of pedidos) for (const d of (p.detalle || [])) prodMap[d.producto?.nombre ?? '—'] = (prodMap[d.producto?.nombre ?? '—'] || 0) + d.cantidad * d.precio_unitario;
+        for (const v of detalle) for (const i of (v.items || [])) prodMap[i.producto?.nombre ?? '—'] = (prodMap[i.producto?.nombre ?? '—'] || 0) + i.cantidad * i.precio_unitario;
+        for (const v of eventosRaw) prodMap[v.producto?.nombre ?? '—'] = (prodMap[v.producto?.nombre ?? '—'] || 0) + v.total;
+        setPieProductos(Object.entries(prodMap).map(([label, value]) => ({ label, value })));
+
+        const cliMap: Record<string, number> = {};
+        for (const p of pedidos) { const n = p.cliente?.nombre ?? 'Sin cliente'; cliMap[n] = (cliMap[n] || 0) + p.total; }
+        setPieClientes(Object.entries(cliMap).map(([label, value]) => ({ label, value })));
+
+        const detMap: Record<string, number> = {};
+        for (const v of detalle) { const n = (v.nombre_comprador || '').trim() || 'Sin nombre'; detMap[n] = (detMap[n] || 0) + v.total; }
+        setPieDetalle(Object.entries(detMap).map(([label, value]) => ({ label, value })));
+
+        const catMap: Record<string, number> = {};
+        for (const c of (clientesRes.data || []) as any[]) { const l = TIPO_LABELS[c.tipo] ?? 'Otros'; catMap[l] = (catMap[l] || 0) + 1; }
+        setPieCategorias(Object.entries(catMap).map(([label, value]) => ({ label, value })));
 
         setResumen({
           pedidos: pedidos.length,
@@ -322,6 +351,16 @@ export default function VentasMesPage() {
           )}
         </div>
       </div>
+
+      {/* Gráficos de torta */}
+      {totalGeneral > 0 && (
+        <div className="space-y-3 mb-6">
+          <PieChart titulo="🥧 Ventas por producto" data={pieProductos} />
+          <PieChart titulo="🥧 Ventas por cliente" data={pieClientes} />
+          <PieChart titulo="🥧 Ventas al detalle (por comprador)" data={pieDetalle} />
+          <PieChart titulo="🥧 Clientes por categoría" data={pieCategorias} formato="num" />
+        </div>
+      )}
 
       {/* Detalle de ventas */}
       {filasExport.length > 0 && (

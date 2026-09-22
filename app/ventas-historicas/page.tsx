@@ -2,9 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import PieChart, { Slice } from '@/components/PieChart';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 const COLORES = ['#e53935', '#ff9800', '#4caf50', '#2196f3', '#9c27b0', '#00bcd4'];
+const TIPO_LABELS: Record<string, string> = {
+  carniceria: 'Carnicerías', distribuidor: 'Distribuidores', restaurante: 'Restaurantes',
+  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', otro: 'Otros',
+};
 
 interface ProdVenta { nombre: string; unidades: number; total: number; }
 interface Entidad { key: string; nombre: string; rut: string | null; total: number; ops: number; productos: ProdVenta[]; }
@@ -15,6 +20,7 @@ export default function VentasHistoricasPage() {
   const [detalleD, setDetalleD] = useState<Entidad[]>([]);
   const [totalD, setTotalD] = useState<Entidad[]>([]);
   const [productosD, setProductosD] = useState<ProdVenta[]>([]);
+  const [categoriaD, setCategoriaD] = useState<Slice[]>([]);
   const [tab, setTab] = useState<'clientes' | 'detalle' | 'total' | 'productos'>('total');
   const [expandido, setExpandido] = useState<string | null>(null);
 
@@ -25,8 +31,15 @@ export default function VentasHistoricasPage() {
           supabase.from('pedidos').select('cliente_id, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))'),
           supabase.from('ventas_detalle').select('nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))'),
           supabase.from('ventas_evento').select('cantidad, precio_unitario, producto:productos(nombre)'),
-          supabase.from('clientes').select('id, nombre, rut'),
+          supabase.from('clientes').select('id, nombre, rut, tipo'),
         ]);
+        // Categorías de clientes (conteo por tipo)
+        const catCount: Record<string, number> = {};
+        for (const c of (cliRes.data || []) as any[]) {
+          const lbl = TIPO_LABELS[c.tipo] ?? 'Otros';
+          catCount[lbl] = (catCount[lbl] || 0) + 1;
+        }
+        setCategoriaD(Object.entries(catCount).map(([label, value]) => ({ label, value })));
         const cliMap = new Map((cliRes.data || []).map((c: any) => [c.id, c]));
         const porNombre = new Map((cliRes.data || []).map((c: any) => [String(c.nombre).trim().toLowerCase(), c]));
 
@@ -136,6 +149,15 @@ export default function VentasHistoricasPage() {
         </p>
         <p className="text-2xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(totalGeneral)}</p>
         <p className="text-xs" style={{ color: '#6b7280' }}>{tab === 'productos' ? `${productosD.length} productos` : `${lista.length} ${tab === 'detalle' ? 'compradores' : 'clientes'}`}</p>
+      </div>
+
+      {/* Gráfico de torta según la pestaña */}
+      <div className="mb-4 space-y-3">
+        {tab === 'productos' && <PieChart titulo="🥧 Ventas por producto" data={productosD.map((p) => ({ label: p.nombre, value: p.total }))} />}
+        {tab === 'clientes' && <PieChart titulo="🥧 Ventas por cliente" data={clientesD.map((c) => ({ label: c.nombre, value: c.total }))} />}
+        {tab === 'detalle' && <PieChart titulo="🥧 Ventas al detalle (por comprador)" data={detalleD.map((c) => ({ label: c.nombre, value: c.total }))} />}
+        {tab === 'total' && <PieChart titulo="🥧 Ventas totales por cliente" data={totalD.map((c) => ({ label: c.nombre, value: c.total }))} />}
+        {(tab === 'clientes' || tab === 'total') && <PieChart titulo="🥧 Clientes por categoría" data={categoriaD} formato="num" />}
       </div>
 
       {/* ===== PRODUCTOS ===== */}
