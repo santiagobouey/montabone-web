@@ -63,6 +63,7 @@ export default function ReportesPage() {
   const [mesFiltro, setMesFiltro] = useState(hoyDate.getMonth());
   const [anioFiltro, setAnioFiltro] = useState(hoyDate.getFullYear());
   const [showSelectorMes, setShowSelectorMes] = useState(false);
+  const [modo, setModo] = useState<'rapido' | 'ampliado'>('rapido');
   // Datos manuales del mes (gastos fijos + situación) y acumulado del año
   const [manual, setManual] = useState<Record<string, string>>({});
   const [manualAnio, setManualAnio] = useState<Record<string, number>[]>([]);
@@ -344,6 +345,17 @@ export default function ReportesPage() {
         <button onClick={() => window.print()} className="px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#2196f3' }}>🖨️ Imprimir</button>
       </div>
 
+      {/* Modo del informe */}
+      <div className="grid grid-cols-2 gap-2 mb-4 no-print">
+        {([['rapido', '⚡ Rápido'], ['ampliado', '📋 Ampliado']] as const).map(([k, lbl]) => (
+          <button key={k} onClick={() => setModo(k)}
+            className="py-2 rounded-lg border text-sm font-semibold"
+            style={{ backgroundColor: modo === k ? '#e5393520' : 'transparent', borderColor: modo === k ? '#e53935' : '#2a2a2a', color: modo === k ? '#e53935' : '#9ca3af' }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
       {/* Selector de mes */}
       <button onClick={() => setShowSelectorMes(!showSelectorMes)} className="w-full flex items-center justify-between rounded-xl border px-4 py-3 mb-4 no-print" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
         <p className="font-bold" style={{ color: '#f5f5f5' }}>📅 {MESES[mesFiltro]} {anioFiltro}</p>
@@ -374,7 +386,7 @@ export default function ReportesPage() {
       <div id="reporte-print">
         <div className="print-only" style={{ marginBottom: 16 }}>
           <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Montabone — Informe Mensual</h1>
-          <p style={{ fontSize: 14, margin: '4px 0 0' }}>{MESES[mesFiltro]} {anioFiltro} · Emitido {new Date().toLocaleDateString('es-CL')}</p>
+          <p style={{ fontSize: 14, margin: '4px 0 0' }}>{MESES[mesFiltro]} {anioFiltro} · Informe {modo === 'rapido' ? 'rápido' : 'ampliado'} · Emitido {new Date().toLocaleDateString('es-CL')}</p>
         </div>
 
         {/* 1. Resumen ejecutivo */}
@@ -398,6 +410,7 @@ export default function ReportesPage() {
           )}
         </div>
 
+        {modo === 'ampliado' && (<>
         {/* 2. Ventas */}
         <Seccion titulo="2 · Ventas">
           <Fila k="Facturación neta (sin IVA)" v={fmt(d?.ventasNetas ?? 0)} />
@@ -495,6 +508,8 @@ export default function ReportesPage() {
           </button>
         </Seccion>
 
+        </>)}
+
         {/* 5. Estado de resultados */}
         <Seccion titulo="5 · Estado de resultados">
           <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 text-sm">
@@ -531,7 +546,8 @@ export default function ReportesPage() {
           <p className="text-xs mt-2" style={{ color: '#6b7280' }}>ℹ️ &quot;Cobrado este mes&quot; cuenta las ventas que quedaron pendientes de un mes anterior y que se marcaron pagadas dentro de {MESES[mesFiltro]}. Se registra desde ahora en adelante (los pagos marcados antes de este cambio no tienen fecha de pago).</p>
         </Seccion>
 
-        {/* 6. Situación financiera */}
+        {modo === 'ampliado' && (
+        /* 6. Situación financiera */
         <Seccion titulo="6 · Situación (a hoy)">
           <Fila k="Cuentas por cobrar (entregado sin pagar)" v={fmt(d?.cxc ?? 0)} color="#ff9800" />
           <Fila k="Cuentas por pagar (facturas proveedor)" v={fmt(d?.cxp ?? 0)} color="#e53935" />
@@ -551,6 +567,7 @@ export default function ReportesPage() {
             {savingManual ? 'Guardando...' : guardadoManual ? '✓ Guardado' : '💾 Guardar datos del mes'}
           </button>
         </Seccion>
+        )}
       </div>
     </div>
   );
