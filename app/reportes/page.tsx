@@ -45,7 +45,7 @@ interface Reporte {
   ventasMesAnterior: number; ventasAnioAnterior: number;
   ventasYTD: number; costosYTD: number; comisionesYTD: number;
   // Ventas
-  unidades: number; kilos: number; precioProm: number; precioPromKilo: number;
+  unidades: number; unidadesPedidos: number; unidadesDetalle: number; unidadesEventos: number; kilos: number; precioProm: number; precioPromKilo: number;
   porProducto: Prod[]; porCanal: Ent[]; topClientes: Ent[];
   // Costos producción
   cogsEstimado: number; costoUnitProm: number; facturasProv: number;
@@ -53,6 +53,7 @@ interface Reporte {
   cxc: number; cxp: number; invCosto: number; invVenta: number;
   cobradoAnteriores: number; pendienteAnteriores: number;
   stockUnidades: number;
+  numClientes: number; ticketPedidos: number; ticketDetalle: number;
 }
 
 export default function ReportesPage() {
@@ -67,11 +68,29 @@ export default function ReportesPage() {
   const [manualAnio, setManualAnio] = useState<Record<string, number>[]>([]);
   const [savingManual, setSavingManual] = useState(false);
   const [guardadoManual, setGuardadoManual] = useState(false);
+  // Gastos operacionales con detalle (tabla propia)
+  const [gastosOp, setGastosOp] = useState<{ id: string; detalle: string; monto: number }[]>([]);
+  const [gastosOpAnioSum, setGastosOpAnioSum] = useState(0);
+  const [nuevoGastoDet, setNuevoGastoDet] = useState('');
+  const [nuevoGastoMonto, setNuevoGastoMonto] = useState('');
+
+  async function agregarGastoOp() {
+    const monto = parseInt((nuevoGastoMonto || '').replace(/[^\d]/g, ''));
+    if (!nuevoGastoDet.trim() || !monto) return;
+    const { data } = await supabase.from('gastos_operacionales').insert({ anio: anioFiltro, mes: mesFiltro, detalle: nuevoGastoDet.trim(), monto }).select('id, detalle, monto').single();
+    if (data) { setGastosOp((g) => [...g, data]); setGastosOpAnioSum((s) => s + monto); }
+    setNuevoGastoDet(''); setNuevoGastoMonto('');
+  }
+  async function eliminarGastoOp(id: string, monto: number) {
+    await supabase.from('gastos_operacionales').delete().eq('id', id);
+    setGastosOp((g) => g.filter((x) => x.id !== id));
+    setGastosOpAnioSum((s) => s - monto);
+  }
 
   async function guardarManual() {
     setSavingManual(true);
     const datos: Record<string, number> = {};
-    for (const [k] of [...GASTOS_FIJOS, ...SITUACION_MANUAL, ['otros_ingresos', '']]) datos[k] = numOf(manual, k);
+    for (const [k] of [...GASTOS_FIJOS, ...SITUACION_MANUAL, ['otros_ingresos', ''], ['costo_ventas', '']]) datos[k] = numOf(manual, k);
     // Capturar el stock actual como "stock al cierre" de este mes (solo si es el mes en curso)
     const esActual = anioFiltro === hoyDate.getFullYear() && mesFiltro === hoyDate.getMonth();
     if (esActual && data) { datos.stock_valor = data.invVenta; datos.stock_unidades = data.stockUnidades; }
@@ -95,7 +114,7 @@ export default function ReportesPage() {
           pedM, detM, eveM, mayM, cli, costM, prods, eveGastos,
           pedW, detW, eveW, mayW, costW,
           pedCxc, detCxc, costCxp, datosAnioRes,
-          pedCobAnt, detCobAnt, pedPendAnt, detPendAnt,
+          pedCobAnt, detCobAnt, pedPendAnt, detPendAnt, gastosOpRes,
         ] = await Promise.all([
           supabase.from('pedidos').select('cliente_id, total, estado, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').gte('fecha', inicio).lte('fecha', fin),
           supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').gte('fecha', inicio).lte('fecha', fin),
@@ -122,7 +141,13 @@ export default function ReportesPage() {
           // Aún pendiente de cobro de meses anteriores (entregado sin pagar, venta previa al mes)
           supabase.from('pedidos').select('total').eq('estado', 'entregado').lt('fecha', inicio),
           supabase.from('ventas_detalle').select('total').eq('estado', 'entregado').lt('fecha', inicio),
+          supabase.from('gastos_operacionales').select('id, mes, detalle, monto').eq('anio', anioFiltro),
         ]);
+
+        // Gastos operacionales con detalle: mes actual (a lista) y suma del año
+        const gastosOpFilas = (gastosOpRes.data || []) as { id: string; mes: number; detalle: string; monto: number }[];
+        setGastosOp(gastosOpFilas.filter((g) => g.mes === mesFiltro).map((g) => ({ id: g.id, detalle: g.detalle, monto: g.monto })));
+        setGastosOpAnioSum(gastosOpFilas.reduce((s, g) => s + g.monto, 0));
 
         // Datos manuales: mes seleccionado (a inputs) y todos los del año (para acumulado)
         const filasAnio = (datosAnioRes.data || []) as { mes: number; datos: Record<string, number> }[];
@@ -149,17 +174,17 @@ export default function ReportesPage() {
           if (!prodMap[nombre]) prodMap[nombre] = { nombre, unidades: 0, total: 0, costo: 0 };
           prodMap[nombre].unidades += uni; prodMap[nombre].total += total; prodMap[nombre].costo += costo;
         };
-        let unidades = 0, cogsEstimado = 0;
+        let unidades = 0, cogsEstimado = 0, unidadesPedidos = 0, unidadesDetalle = 0, unidadesEventos = 0;
         for (const p of (pedM.data || []) as any[]) for (const d of (p.detalle || [])) {
-          const c = d.producto?.costo ?? 0; unidades += d.cantidad; cogsEstimado += d.cantidad * c;
+          const c = d.producto?.costo ?? 0; unidades += d.cantidad; unidadesPedidos += d.cantidad; cogsEstimado += d.cantidad * c;
           sumaProd(d.producto?.nombre ?? '—', d.cantidad, d.cantidad * d.precio_unitario, d.cantidad * c);
         }
         for (const v of (detM.data || []) as any[]) for (const i of (v.items || [])) {
-          const c = i.producto?.costo ?? 0; unidades += i.cantidad; cogsEstimado += i.cantidad * c;
+          const c = i.producto?.costo ?? 0; unidades += i.cantidad; unidadesDetalle += i.cantidad; cogsEstimado += i.cantidad * c;
           sumaProd(i.producto?.nombre ?? '—', i.cantidad, i.cantidad * i.precio_unitario, i.cantidad * c);
         }
         for (const v of (eveM.data || []) as any[]) {
-          const c = v.producto?.costo ?? 0; unidades += (v.cantidad || 0); cogsEstimado += (v.cantidad || 0) * c;
+          const c = v.producto?.costo ?? 0; unidades += (v.cantidad || 0); unidadesEventos += (v.cantidad || 0); cogsEstimado += (v.cantidad || 0) * c;
           sumaProd(v.producto?.nombre ?? '—', v.cantidad || 0, v.total, (v.cantidad || 0) * c);
         }
         const kilos = ((mayM.data || []) as any[]).reduce((s, v) => s + (v.items || []).reduce((a: number, i: any) => a + (i.kilos || 0), 0), 0);
@@ -168,6 +193,9 @@ export default function ReportesPage() {
         const porProducto = Object.values(prodMap).sort((a, b) => b.total - a.total);
         const precioProm = unidades > 0 ? (vPed + vDet + vEve) / unidades : 0;
         const precioPromKilo = kilos > 0 ? neto(vMay) / kilos : 0;
+        const numClientes = ((cli.data || []) as any[]).length;
+        const ticketPedidos = ((pedM.data || []) as any[]).length > 0 ? vPed / ((pedM.data || []) as any[]).length : 0;
+        const ticketDetalle = ((detM.data || []) as any[]).length > 0 ? vDet / ((detM.data || []) as any[]).length : 0;
         const costoUnitProm = unidades > 0 ? (cogsEstimado - costoMayor) / unidades : 0;
 
         // ---- Por canal ----
@@ -236,9 +264,10 @@ export default function ReportesPage() {
         setData({
           ventasTotales, ventasNetas, iva, costoVentas, margenBruto, comisiones, gastosEventos, gastosOper, utilidad,
           ventasMesAnterior, ventasAnioAnterior, ventasYTD, costosYTD, comisionesYTD,
-          unidades, kilos, precioProm, precioPromKilo, porProducto, porCanal, topClientes,
+          unidades, unidadesPedidos, unidadesDetalle, unidadesEventos, kilos, precioProm, precioPromKilo, porProducto, porCanal, topClientes,
           cogsEstimado, costoUnitProm, facturasProv, cxc, cxp, invCosto, invVenta,
           cobradoAnteriores, pendienteAnteriores, stockUnidades,
+          numClientes, ticketPedidos, ticketDetalle,
         });
       } catch {}
       setLoading(false);
@@ -254,16 +283,21 @@ export default function ReportesPage() {
   const totalVentasClientes = (d?.topClientes ?? []).reduce((s, c) => s + c.total, 0);
   const esMesActual = anioFiltro === hoyDate.getFullYear() && mesFiltro === hoyDate.getMonth();
   const netaYTD = neto(d?.ventasYTD ?? 0);
+
+  // Costo de ventas: por defecto = facturas del mes, pero se puede editar (override manual)
+  const costoVentasFinal = numOf(manual, 'costo_ventas') > 0 ? numOf(manual, 'costo_ventas') : (d?.costoVentas ?? 0);
+  const margenBrutoFinal = (d?.ventasNetas ?? 0) - costoVentasFinal;
   const margenYTD = netaYTD - (d?.costosYTD ?? 0);
 
   // Manual (gastos fijos + situación) del mes y acumulado del año
   const gastosFijos = GASTOS_FIJOS.reduce((s, [k]) => s + numOf(manual, k), 0);
+  const totalGastosOp = gastosOp.reduce((s, g) => s + g.monto, 0); // gastos con detalle del mes
   const otrosIngresos = numOf(manual, 'otros_ingresos');
-  const gastosOperMes = (d?.gastosOper ?? 0) + gastosFijos;
-  const utilidadFinal = (d?.margenBruto ?? 0) - gastosOperMes + otrosIngresos;
+  const gastosOperMes = (d?.gastosOper ?? 0) + gastosFijos + totalGastosOp;
+  const utilidadFinal = margenBrutoFinal - gastosOperMes + otrosIngresos;
   const gastosFijosYTD = manualAnio.reduce((s, m) => s + GASTOS_FIJOS.reduce((a, [k]) => a + (m[k] || 0), 0), 0);
   const otrosIngresosYTD = manualAnio.reduce((s, m) => s + (m.otros_ingresos || 0), 0);
-  const gastosOperYTD = (d?.comisionesYTD ?? 0) + gastosFijosYTD;
+  const gastosOperYTD = (d?.comisionesYTD ?? 0) + gastosFijosYTD + gastosOpAnioSum;
   const utilidadYTD = margenYTD - gastosOperYTD + otrosIngresosYTD;
   const inputManual = (k: string) => (
     <input inputMode="numeric" value={manual[k] ?? ''} onChange={(e) => setManual((m) => ({ ...m, [k]: e.target.value }))}
@@ -347,8 +381,8 @@ export default function ReportesPage() {
         <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: '#6b7280' }}>1 · Resumen ejecutivo</p>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
           <Card label="Ventas totales" value={fmt(d?.ventasTotales ?? 0)} color="#4caf50" />
-          <Card label="Costos (facturas)" value={fmt(d?.costoVentas ?? 0)} color="#e53935" />
-          <Card label="Margen bruto" value={fmt(d?.margenBruto ?? 0)} color="#2196f3" />
+          <Card label="Costo de ventas" value={fmt(costoVentasFinal)} color="#e53935" />
+          <Card label="Margen bruto" value={fmt(margenBrutoFinal)} color="#2196f3" />
           <Card label="Gastos operac." value={fmt(gastosOperMes)} color="#ff9800" />
           <Card label={utilidadFinal < 0 ? 'Pérdida del mes' : 'Utilidad del mes'} value={fmt(utilidadFinal)} color={utilidadFinal < 0 ? '#e53935' : '#4caf50'} />
           <Card label="vs mes / año ant." value={`${pctMes === null ? '—' : (pctMes >= 0 ? '+' : '') + pctMes + '%'} / ${pctAnio === null ? '—' : (pctAnio >= 0 ? '+' : '') + pctAnio + '%'}`} color="#9c27b0"
@@ -369,10 +403,16 @@ export default function ReportesPage() {
           <Fila k="Facturación neta (sin IVA)" v={fmt(d?.ventasNetas ?? 0)} />
           <Fila k="IVA (19%)" v={fmt(d?.iva ?? 0)} color="#ff9800" />
           <Fila k="Ventas totales (con IVA)" v={fmt(d?.ventasTotales ?? 0)} color="#4caf50" bold />
-          <Fila k="Unidades vendidas (paquetes)" v={`${(d?.unidades ?? 0).toLocaleString('es-CL')} u.`} />
+          <Fila k="Paquetes vendidos (total)" v={`${(d?.unidades ?? 0).toLocaleString('es-CL')} u.`} bold />
+          <Fila k="• Paquetes a clientes (pedidos)" v={`${(d?.unidadesPedidos ?? 0).toLocaleString('es-CL')} u.`} color="#e53935" />
+          <Fila k="• Paquetes al detalle" v={`${(d?.unidadesDetalle ?? 0).toLocaleString('es-CL')} u.`} color="#9c27b0" />
+          {(d?.unidadesEventos ?? 0) > 0 && <Fila k="• Paquetes en eventos" v={`${(d?.unidadesEventos ?? 0).toLocaleString('es-CL')} u.`} color="#ff9800" />}
           <Fila k="Kilos vendidos (por mayor)" v={`${(d?.kilos ?? 0).toLocaleString('es-CL')} kg`} />
           <Fila k="Precio promedio por unidad" v={fmt(d?.precioProm ?? 0)} />
           <Fila k="Precio promedio por kilo (neto)" v={fmt(d?.precioPromKilo ?? 0)} />
+          <Fila k="Ticket promedio — clientes (pedidos)" v={fmt(d?.ticketPedidos ?? 0)} color="#e53935" />
+          <Fila k="Ticket promedio — al detalle" v={fmt(d?.ticketDetalle ?? 0)} color="#9c27b0" />
+          <Fila k="Clientes registrados" v={`${(d?.numClientes ?? 0).toLocaleString('es-CL')}`} color="#2196f3" />
         </Seccion>
 
         <Seccion titulo="Ventas por producto">
@@ -400,9 +440,19 @@ export default function ReportesPage() {
         <Seccion titulo="3 · Costos de producción">
           <Fila k="Costo estimado de lo vendido" v={fmt(d?.cogsEstimado ?? 0)} color="#e53935" />
           <Fila k="Costo promedio por unidad" v={fmt(d?.costoUnitProm ?? 0)} />
-          <Fila k="Facturas de proveedores (mes)" v={fmt(d?.facturasProv ?? 0)} color="#e53935" />
+          <Fila k="Facturas de proveedores (auto)" v={fmt(d?.facturasProv ?? 0)} color="#6b7280" />
+          <div className="flex justify-between items-center py-1.5 border-b" style={{ borderColor: '#2a2a2a' }}>
+            <span className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>Costo de ventas del mes</span>
+            <span className="print-only text-sm font-bold" style={{ color: '#e53935' }}>{fmt(costoVentasFinal)}</span>
+            {inputManual('costo_ventas')}
+          </div>
+          <p className="text-xs mt-1 mb-2 no-print" style={{ color: '#6b7280' }}>Déjalo en blanco (o 0) para usar el total de facturas ({fmt(d?.facturasProv ?? 0)}). Escribe un monto para editarlo.</p>
           <Fila k="Margen bruto por unidad" v={fmt((d?.precioProm ?? 0) / 1.19 - (d?.costoUnitProm ?? 0))} color="#4caf50" />
-          <p className="text-xs mt-2" style={{ color: '#6b7280' }}>ℹ️ El costo estimado usa el costo unitario de cada producto (ficha en Inventario). El desglose por kg (materia prima, mano de obra, envase, transporte, merma) requiere cargar esos datos — lo puedo agregar si quieres registrarlos.</p>
+          <button onClick={guardarManual} disabled={savingManual}
+            className="w-full mt-3 py-2 rounded-lg font-bold text-sm text-white disabled:opacity-40 no-print"
+            style={{ backgroundColor: guardadoManual ? '#4caf50' : '#2196f3' }}>
+            {savingManual ? 'Guardando...' : guardadoManual ? '✓ Guardado' : '💾 Guardar datos del mes'}
+          </button>
         </Seccion>
 
         {/* 4. Gastos */}
@@ -417,11 +467,31 @@ export default function ReportesPage() {
               {inputManual(k)}
             </div>
           ))}
-          <Fila k="Total gastos operacionales" v={fmt(gastosOperMes)} color="#ff9800" bold />
+          {/* Gastos operacionales con detalle */}
+          <p className="text-xs font-bold uppercase tracking-wide mt-4 mb-1" style={{ color: '#6b7280' }}>Otros gastos del mes (con detalle)</p>
+          {gastosOp.length === 0 ? <p className="text-xs mb-1" style={{ color: '#6b7280' }}>Sin gastos agregados</p> :
+            gastosOp.map((g) => (
+              <div key={g.id} className="flex justify-between items-center py-1.5 border-b" style={{ borderColor: '#2a2a2a' }}>
+                <span className="text-sm min-w-0 pr-2" style={{ color: '#9ca3af' }}>{g.detalle}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-sm font-semibold" style={{ color: '#ff9800' }}>{fmt(g.monto)}</span>
+                  <button onClick={() => eliminarGastoOp(g.id, g.monto)} className="text-sm no-print" style={{ color: '#e53935' }}>🗑️</button>
+                </div>
+              </div>
+            ))}
+          <div className="flex gap-2 mt-2 no-print">
+            <input value={nuevoGastoDet} onChange={(e) => setNuevoGastoDet(e.target.value)} placeholder="Detalle (ej: reparación furgón)"
+              className="flex-1 min-w-0 rounded-lg px-2 py-1.5 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            <input inputMode="numeric" value={nuevoGastoMonto} onChange={(e) => setNuevoGastoMonto(e.target.value)} placeholder="$0"
+              className="w-24 rounded-lg px-2 py-1.5 text-sm text-right border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+            <button onClick={agregarGastoOp} className="px-3 rounded-lg text-white font-bold flex-shrink-0" style={{ backgroundColor: '#4caf50' }}>+</button>
+          </div>
+
+          <div className="mt-3"><Fila k="Total gastos operacionales" v={fmt(gastosOperMes)} color="#ff9800" bold /></div>
           <button onClick={guardarManual} disabled={savingManual}
             className="w-full mt-3 py-2 rounded-lg font-bold text-sm text-white disabled:opacity-40 no-print"
             style={{ backgroundColor: guardadoManual ? '#4caf50' : '#2196f3' }}>
-            {savingManual ? 'Guardando...' : guardadoManual ? '✓ Guardado' : '💾 Guardar datos del mes'}
+            {savingManual ? 'Guardando...' : guardadoManual ? '✓ Guardado' : '💾 Guardar gastos fijos'}
           </button>
         </Seccion>
 
@@ -433,10 +503,10 @@ export default function ReportesPage() {
             <span className="font-bold py-1 text-right" style={{ color: '#6b7280' }}>Año</span>
             {[
               ['Ventas netas', d?.ventasNetas ?? 0, netaYTD, '#4caf50'],
-              ['(-) Costo de ventas', -(d?.costoVentas ?? 0), -(d?.costosYTD ?? 0), '#e53935'],
-              ['Margen bruto', d?.margenBruto ?? 0, margenYTD, '#2196f3'],
+              ['(-) Costo de ventas', -costoVentasFinal, -(d?.costosYTD ?? 0), '#e53935'],
+              ['Margen bruto', margenBrutoFinal, margenYTD, '#2196f3'],
               ['(-) Gastos operac.', -gastosOperMes, -gastosOperYTD, '#ff9800'],
-              ['Resultado operacional', (d?.margenBruto ?? 0) - gastosOperMes, margenYTD - gastosOperYTD, '#2196f3'],
+              ['Resultado operacional', margenBrutoFinal - gastosOperMes, margenYTD - gastosOperYTD, '#2196f3'],
               ['Otros ingresos/gastos', otrosIngresos, otrosIngresosYTD, '#9c27b0'],
               ['Utilidad final', utilidadFinal, utilidadYTD, utilidadFinal < 0 ? '#e53935' : '#4caf50'],
             ].map(([k, mes, anio, color], idx) => (
