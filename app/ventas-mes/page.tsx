@@ -64,14 +64,12 @@ export default function VentasMesPage() {
           supabase
             .from('pedidos')
             .select('fecha, total, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))')
-            .eq('estado', 'pagado')
             .gte('fecha', inicioMes)
             .lte('fecha', finMes)
             .order('fecha', { ascending: true }),
           supabase
             .from('ventas_detalle')
             .select('fecha, total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
-            .eq('estado', 'pagado')
             .gte('fecha', inicioMes)
             .lte('fecha', finMes)
             .order('fecha', { ascending: true }),
@@ -146,8 +144,8 @@ export default function VentasMesPage() {
       const inicioAnio = `${anio}-01-01`;
       const finAnio = `${anio}-12-31`;
       const [pedidosRes, detalleRes, eventosRes] = await Promise.all([
-        supabase.from('pedidos').select('fecha, total').eq('estado', 'pagado').gte('fecha', inicioAnio).lte('fecha', finAnio),
-        supabase.from('ventas_detalle').select('fecha, total').eq('estado', 'pagado').gte('fecha', inicioAnio).lte('fecha', finAnio),
+        supabase.from('pedidos').select('fecha, total').gte('fecha', inicioAnio).lte('fecha', finAnio),
+        supabase.from('ventas_detalle').select('fecha, total').gte('fecha', inicioAnio).lte('fecha', finAnio),
         supabase.from('ventas_evento').select('total, evento:eventos(fecha)').gte('eventos.fecha', inicioAnio).lte('eventos.fecha', finAnio),
       ]);
       const totales = Array(12).fill(0);
@@ -254,7 +252,7 @@ export default function VentasMesPage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>Total vendido en {MESES[mes]}</p>
           <p className="text-4xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(totalGeneral)}</p>
-          <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Solo ventas con estado <span style={{ color: '#4caf50' }}>Pagado</span></p>
+          <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Se cuenta <span style={{ color: '#4caf50' }}>desde que ingresas la venta</span></p>
         </div>
         <span className="text-5xl">📈</span>
       </div>
@@ -306,7 +304,7 @@ export default function VentasMesPage() {
             <div className="flex items-center gap-2"><span>📦</span><p className="font-bold" style={{ color: '#f5f5f5' }}>Pedidos</p></div>
             <p className="text-2xl font-extrabold" style={{ color: '#e53935' }}>{fmt(resumen?.totalPedidos ?? 0)}</p>
           </div>
-          <p className="text-xs" style={{ color: '#6b7280' }}>{resumen?.pedidos ?? 0} pedido{resumen?.pedidos !== 1 ? 's' : ''} pagado{resumen?.pedidos !== 1 ? 's' : ''} este mes</p>
+          <p className="text-xs" style={{ color: '#6b7280' }}>{resumen?.pedidos ?? 0} pedido{resumen?.pedidos !== 1 ? 's' : ''} este mes</p>
           {totalGeneral > 0 && (
             <div className="mt-3">
               <div className="w-full rounded-full h-2" style={{ backgroundColor: '#2a2a2a' }}>
@@ -323,7 +321,7 @@ export default function VentasMesPage() {
             <div className="flex items-center gap-2"><span>🛒</span><p className="font-bold" style={{ color: '#f5f5f5' }}>Venta al Detalle</p></div>
             <p className="text-2xl font-extrabold" style={{ color: '#9c27b0' }}>{fmt(resumen?.totalDetalle ?? 0)}</p>
           </div>
-          <p className="text-xs" style={{ color: '#6b7280' }}>{resumen?.detalle ?? 0} venta{resumen?.detalle !== 1 ? 's' : ''} pagada{resumen?.detalle !== 1 ? 's' : ''} este mes</p>
+          <p className="text-xs" style={{ color: '#6b7280' }}>{resumen?.detalle ?? 0} venta{resumen?.detalle !== 1 ? 's' : ''} al detalle este mes</p>
           {totalGeneral > 0 && (
             <div className="mt-3">
               <div className="w-full rounded-full h-2" style={{ backgroundColor: '#2a2a2a' }}>
@@ -395,7 +393,7 @@ export default function VentasMesPage() {
       {totalGeneral === 0 && (
         <div className="text-center py-10 mt-4">
           <p className="text-3xl mb-2">📭</p>
-          <p style={{ color: '#6b7280' }}>Sin ventas pagadas este mes todavía</p>
+          <p style={{ color: '#6b7280' }}>Sin ventas este mes todavía</p>
         </div>
       )}
     </div>

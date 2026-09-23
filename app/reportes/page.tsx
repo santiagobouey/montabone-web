@@ -117,8 +117,8 @@ export default function ReportesPage() {
           pedCxc, detCxc, costCxp, datosAnioRes,
           pedCobAnt, detCobAnt, pedPendAnt, detPendAnt, gastosOpRes,
         ] = await Promise.all([
-          supabase.from('pedidos').select('cliente_id, total, estado, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
-          supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
+          supabase.from('pedidos').select('cliente_id, total, estado, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').gte('fecha', inicio).lte('fecha', fin),
+          supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').gte('fecha', inicio).lte('fecha', fin),
           supabase.from('ventas_evento').select('total, cantidad, producto:productos(nombre, costo)').gte('fecha', inicio).lte('fecha', fin),
           supabase.from('ventas_mayor').select('total, costo, cliente:clientes(nombre), items:items_venta_mayor(kilos, subtotal)').gte('fecha', inicio).lte('fecha', fin),
           supabase.from('clientes').select('id, nombre, tipo'),
@@ -126,8 +126,8 @@ export default function ReportesPage() {
           supabase.from('productos').select('nombre, stock, costo, precio'),
           supabase.from('eventos').select('fecha, gastos(monto)').gte('fecha', inicio).lte('fecha', fin),
           // Amplio (comparaciones + YTD): solo totales + fecha
-          supabase.from('pedidos').select('fecha, total, cliente:clientes(nombre)').in('estado', ['entregado', 'pagado']).gte('fecha', rangoAmplio).lte('fecha', fin),
-          supabase.from('ventas_detalle').select('fecha, total, nombre_comprador').in('estado', ['entregado', 'pagado']).gte('fecha', rangoAmplio).lte('fecha', fin),
+          supabase.from('pedidos').select('fecha, total, cliente:clientes(nombre)').gte('fecha', rangoAmplio).lte('fecha', fin),
+          supabase.from('ventas_detalle').select('fecha, total, nombre_comprador').gte('fecha', rangoAmplio).lte('fecha', fin),
           supabase.from('ventas_evento').select('fecha, total').gte('fecha', rangoAmplio).lte('fecha', fin),
           supabase.from('ventas_mayor').select('fecha, total').gte('fecha', rangoAmplio).lte('fecha', fin),
           supabase.from('costos_factura').select('created_at, monto').gte('created_at', rangoAmplio).lte('created_at', fin + 'T23:59:59'),

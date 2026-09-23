@@ -109,8 +109,8 @@ export default function DashboardPage() {
           vendPedRes,
           vendDetRes,
         ] = await Promise.all([
-          supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicioMes).lte('fecha', finMes),
-          supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicioMes).lte('fecha', finMes),
+          supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').gte('fecha', inicioMes).lte('fecha', finMes),
+          supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_evento').select('total, cantidad, precio_unitario, producto:productos(nombre, costo), evento:eventos(fecha)').gte('eventos.fecha', inicioMes).lte('eventos.fecha', finMes),
           supabase.from('clientes').select('id, nombre, tipo, activo_manual, es_empresa'),
           supabase.from('productos').select('*').order('nombre'),
