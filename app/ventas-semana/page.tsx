@@ -8,7 +8,7 @@ const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 const DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-interface Venta { fecha: string; total: number; tipo: 'pedido' | 'detalle' | 'evento' | 'mayor'; }
+interface Venta { fecha: string; total: number; tipo: 'pedido' | 'detalle' | 'evento' | 'mayor'; unidades: number; }
 
 const TIPO_LABELS: Record<string, string> = {
   carniceria: 'Carnicerías', distribuidor: 'Distribuidores', restaurante: 'Restaurantes',
@@ -82,16 +82,17 @@ export default function VentasSemanaPage() {
         const inicio = new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1);
         const inicioStr = iso(inicio);
         const [pedRes, detRes, eveRes, mayRes] = await Promise.all([
-          supabase.from('pedidos').select('fecha, total').gte('fecha', inicioStr),
-          supabase.from('ventas_detalle').select('fecha, total').gte('fecha', inicioStr),
-          supabase.from('ventas_evento').select('total, fecha').gte('fecha', inicioStr),
+          supabase.from('pedidos').select('fecha, total, detalle:detalle_pedido(cantidad)').gte('fecha', inicioStr),
+          supabase.from('ventas_detalle').select('fecha, total, items:items_venta_detalle(cantidad)').gte('fecha', inicioStr),
+          supabase.from('ventas_evento').select('total, fecha, cantidad').gte('fecha', inicioStr),
           supabase.from('ventas_mayor').select('fecha, total').gte('fecha', inicioStr),
         ]);
         const arr: Venta[] = [];
-        for (const p of (pedRes.data || []) as any[]) arr.push({ fecha: p.fecha, total: p.total, tipo: 'pedido' });
-        for (const v of (detRes.data || []) as any[]) arr.push({ fecha: v.fecha, total: v.total, tipo: 'detalle' });
-        for (const v of ((eveRes.data || []) as any[]).filter((x) => x.fecha)) arr.push({ fecha: v.fecha, total: v.total, tipo: 'evento' });
-        for (const v of (mayRes.data || []) as any[]) arr.push({ fecha: v.fecha, total: v.total, tipo: 'mayor' });
+        const sumaCant = (filas: any[]) => (filas || []).reduce((s: number, x: any) => s + (x.cantidad || 0), 0);
+        for (const p of (pedRes.data || []) as any[]) arr.push({ fecha: p.fecha, total: p.total, tipo: 'pedido', unidades: sumaCant(p.detalle) });
+        for (const v of (detRes.data || []) as any[]) arr.push({ fecha: v.fecha, total: v.total, tipo: 'detalle', unidades: sumaCant(v.items) });
+        for (const v of ((eveRes.data || []) as any[]).filter((x) => x.fecha)) arr.push({ fecha: v.fecha, total: v.total, tipo: 'evento', unidades: v.cantidad || 0 });
+        for (const v of (mayRes.data || []) as any[]) arr.push({ fecha: v.fecha, total: v.total, tipo: 'mayor', unidades: 0 });
         setVentas(arr);
       } catch {}
       finally { setLoading(false); }
@@ -108,16 +109,19 @@ export default function VentasSemanaPage() {
 
   // ===== SEMANAL =====
   const lunesActual = lunesDe(new Date());
-  const semanas: { key: string; label: string; total: number }[] = [];
+  const semanas: { key: string; label: string; total: number; unidades: number }[] = [];
   for (let i = 0; i < 8; i++) {
     const l = new Date(lunesActual); l.setDate(l.getDate() - i * 7);
     const key = iso(l);
     const fin = new Date(l); fin.setDate(fin.getDate() + 6);
-    const total = ventas.filter((v) => iso(lunesDe(new Date(v.fecha + 'T12:00:00'))) === key).reduce((s, v) => s + v.total, 0);
-    semanas.push({ key, label: `${l.getDate()}/${l.getMonth() + 1} – ${fin.getDate()}/${fin.getMonth() + 1}`, total });
+    const deLaSemana = ventas.filter((v) => iso(lunesDe(new Date(v.fecha + 'T12:00:00'))) === key);
+    const total = deLaSemana.reduce((s, v) => s + v.total, 0);
+    const unidades = deLaSemana.reduce((s, v) => s + v.unidades, 0);
+    semanas.push({ key, label: `${l.getDate()}/${l.getMonth() + 1} – ${fin.getDate()}/${fin.getMonth() + 1}`, total, unidades });
   }
   const ventasSem = ventas.filter((v) => iso(lunesDe(new Date(v.fecha + 'T12:00:00'))) === semanaSel);
   const totalSem = ventasSem.reduce((s, v) => s + v.total, 0);
+  const unidadesSem = ventasSem.reduce((s, v) => s + v.unidades, 0);
   const lunesSemSel = new Date(semanaSel + 'T12:00:00');
   const finSemSel = new Date(lunesSemSel); finSemSel.setDate(finSemSel.getDate() + 6);
   const porDia = DIAS.map((_, i) => ventasSem.filter((v) => ((new Date(v.fecha + 'T12:00:00').getDay() + 6) % 7) === i).reduce((s, v) => s + v.total, 0));
@@ -127,15 +131,18 @@ export default function VentasSemanaPage() {
   const vsSemAnt = semAnterior > 0 ? Math.round((totalSem - semAnterior) / semAnterior * 100) : null;
 
   // ===== MENSUAL =====
-  const meses: { key: string; label: string; total: number }[] = [];
+  const meses: { key: string; label: string; total: number; unidades: number }[] = [];
   for (let i = 0; i < 6; i++) {
     const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const total = ventas.filter((v) => v.fecha.slice(0, 7) === key).reduce((s, v) => s + v.total, 0);
-    meses.push({ key, label: `${MESES[d.getMonth()]} ${d.getFullYear()}`, total });
+    const delMes = ventas.filter((v) => v.fecha.slice(0, 7) === key);
+    const total = delMes.reduce((s, v) => s + v.total, 0);
+    const unidades = delMes.reduce((s, v) => s + v.unidades, 0);
+    meses.push({ key, label: `${MESES[d.getMonth()]} ${d.getFullYear()}`, total, unidades });
   }
   const ventasMes = ventas.filter((v) => v.fecha.slice(0, 7) === mesSel);
   const totalMes = ventasMes.reduce((s, v) => s + v.total, 0);
+  const unidadesMes = ventasMes.reduce((s, v) => s + v.unidades, 0);
   const [anioMS, mesMS] = mesSel.split('-').map(Number);
   const idxMesSel = meses.findIndex((m) => m.key === mesSel);
   const mesAnterior = idxMesSel >= 0 && idxMesSel < meses.length - 1 ? meses[idxMesSel + 1].total : 0;
@@ -167,6 +174,7 @@ export default function VentasSemanaPage() {
               📅 Semana {lunesSemSel.getDate()}/{lunesSemSel.getMonth() + 1} – {finSemSel.getDate()}/{finSemSel.getMonth() + 1}
             </p>
             <p className="text-4xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(totalSem)}</p>
+            <p className="text-lg font-extrabold" style={{ color: '#2196f3' }}>{unidadesSem.toLocaleString('es-CL')} <span className="text-sm font-normal" style={{ color: '#6b7280' }}>paquetes</span></p>
             <p className="text-xs mt-1" style={{ color: '#6b7280' }}>
               {ventasSem.length} venta{ventasSem.length !== 1 ? 's' : ''}
               {vsSemAnt !== null && (<> · <span style={{ color: vsSemAnt >= 0 ? '#4caf50' : '#e53935' }}>{vsSemAnt >= 0 ? '▲' : '▼'} {Math.abs(vsSemAnt)}% vs semana anterior</span></>)}
@@ -202,6 +210,7 @@ export default function VentasSemanaPage() {
           <div className="rounded-xl border p-5 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2196f360', borderLeftWidth: 4, borderLeftColor: '#2196f3' }}>
             <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>📆 {MESES[(mesMS || 1) - 1]} {anioMS}</p>
             <p className="text-4xl font-extrabold" style={{ color: '#2196f3' }}>{fmt(totalMes)}</p>
+            <p className="text-lg font-extrabold" style={{ color: '#4caf50' }}>{unidadesMes.toLocaleString('es-CL')} <span className="text-sm font-normal" style={{ color: '#6b7280' }}>paquetes</span></p>
             <p className="text-xs mt-1" style={{ color: '#6b7280' }}>
               {ventasMes.length} venta{ventasMes.length !== 1 ? 's' : ''}
               {vsMesAnt !== null && (<> · <span style={{ color: vsMesAnt >= 0 ? '#4caf50' : '#e53935' }}>{vsMesAnt >= 0 ? '▲' : '▼'} {Math.abs(vsMesAnt)}% vs mes anterior</span></>)}
@@ -275,7 +284,7 @@ function PorTipo({ lista, vacio }: { lista: { label: string; tipo: string; color
   );
 }
 
-function ListaComparativa({ titulo, items, sel, onSel, actualKey }: { titulo: string; items: { key: string; label: string; total: number }[]; sel: string; onSel: (k: string) => void; actualKey: string }) {
+function ListaComparativa({ titulo, items, sel, onSel, actualKey }: { titulo: string; items: { key: string; label: string; total: number; unidades: number }[]; sel: string; onSel: (k: string) => void; actualKey: string }) {
   return (
     <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
       <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
@@ -288,7 +297,10 @@ function ListaComparativa({ titulo, items, sel, onSel, actualKey }: { titulo: st
             className="w-full flex justify-between items-center px-4 py-3 text-left"
             style={{ borderBottom: i < items.length - 1 ? '1px solid #2a2a2a' : 'none', backgroundColor: activo ? '#4caf5015' : 'transparent' }}>
             <p className="text-sm font-semibold" style={{ color: activo ? '#4caf50' : '#f5f5f5' }}>{s.label}{s.key === actualKey ? ' (actual)' : ''}</p>
-            <p className="font-extrabold" style={{ color: activo ? '#4caf50' : '#9ca3af' }}>{fmt(s.total)}</p>
+            <div className="text-right">
+              <p className="font-extrabold" style={{ color: activo ? '#4caf50' : '#9ca3af' }}>{fmt(s.total)}</p>
+              <p className="text-xs" style={{ color: '#6b7280' }}>{s.unidades.toLocaleString('es-CL')} paq.</p>
+            </div>
           </button>
         );
       })}
