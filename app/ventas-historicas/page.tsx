@@ -28,8 +28,8 @@ export default function VentasHistoricasPage() {
     async function load() {
       try {
         const [pedRes, detRes, eveRes, cliRes] = await Promise.all([
-          supabase.from('pedidos').select('cliente_id, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))'),
-          supabase.from('ventas_detalle').select('nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))'),
+          supabase.from('pedidos').select('cliente_id, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))').in('estado', ['entregado', 'pagado']),
+          supabase.from('ventas_detalle').select('nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))').in('estado', ['entregado', 'pagado']),
           supabase.from('ventas_evento').select('cantidad, precio_unitario, producto:productos(nombre)'),
           supabase.from('clientes').select('id, nombre, rut, tipo'),
         ]);

@@ -51,8 +51,8 @@ export default function VentasSemanaPage() {
       const ini = `${mesSel}-01`;
       const fin = `${mesSel}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
       const [pedR, detR, eveR, cliR] = await Promise.all([
-        supabase.from('pedidos').select('total, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))').gte('fecha', ini).lte('fecha', fin),
-        supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))').gte('fecha', ini).lte('fecha', fin),
+        supabase.from('pedidos').select('total, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))').in('estado', ['entregado', 'pagado']).gte('fecha', ini).lte('fecha', fin),
+        supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))').in('estado', ['entregado', 'pagado']).gte('fecha', ini).lte('fecha', fin),
         supabase.from('ventas_evento').select('total, producto:productos(nombre)').gte('fecha', ini).lte('fecha', fin),
         supabase.from('clientes').select('tipo'),
       ]);
@@ -82,10 +82,10 @@ export default function VentasSemanaPage() {
         const inicio = new Date(hoy.getFullYear(), hoy.getMonth() - 5, 1);
         const inicioStr = iso(inicio);
         const [pedRes, detRes, eveRes, mayRes] = await Promise.all([
-          supabase.from('pedidos').select('fecha, total, detalle:detalle_pedido(cantidad)').gte('fecha', inicioStr),
-          supabase.from('ventas_detalle').select('fecha, total, items:items_venta_detalle(cantidad)').gte('fecha', inicioStr),
+          supabase.from('pedidos').select('fecha, total, detalle:detalle_pedido(cantidad)').in('estado', ['entregado', 'pagado']).gte('fecha', inicioStr),
+          supabase.from('ventas_detalle').select('fecha, total, items:items_venta_detalle(cantidad)').in('estado', ['entregado', 'pagado']).gte('fecha', inicioStr),
           supabase.from('ventas_evento').select('total, fecha, cantidad').gte('fecha', inicioStr),
-          supabase.from('ventas_mayor').select('fecha, total').gte('fecha', inicioStr),
+          supabase.from('ventas_mayor').select('fecha, total').in('estado', ['entregado', 'pagado']).gte('fecha', inicioStr),
         ]);
         const arr: Venta[] = [];
         const sumaCant = (filas: any[]) => (filas || []).reduce((s: number, x: any) => s + (x.cantidad || 0), 0);

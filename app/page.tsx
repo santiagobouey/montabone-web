@@ -109,8 +109,8 @@ export default function DashboardPage() {
           vendPedRes,
           vendDetRes,
         ] = await Promise.all([
-          supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').gte('fecha', inicioMes).lte('fecha', finMes),
-          supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').gte('fecha', inicioMes).lte('fecha', finMes),
+          supabase.from('pedidos').select('total, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicioMes).lte('fecha', finMes),
+          supabase.from('ventas_detalle').select('total, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicioMes).lte('fecha', finMes),
           supabase.from('ventas_evento').select('total, cantidad, precio_unitario, producto:productos(nombre, costo), evento:eventos(fecha)').gte('eventos.fecha', inicioMes).lte('eventos.fecha', finMes),
           supabase.from('clientes').select('id, nombre, tipo, activo_manual, es_empresa'),
           supabase.from('productos').select('*').order('nombre'),
@@ -131,9 +131,9 @@ export default function DashboardPage() {
           supabase.from('costos_factura').select('monto').is('periodo_id', null),
           supabase.from('ventas_mayor').select('total, costo').is('periodo_id', null),
           supabase.from('mermas').select('destino_nombre, seguimiento_fecha, producto:productos(nombre)').eq('motivo', 'muestra').eq('seguimiento_hecho', false).not('seguimiento_fecha', 'is', null).lte('seguimiento_fecha', hoyStr),
-          // Vendedores del mes (todas las ventas del mes, cualquier estado)
-          supabase.from('pedidos').select('total, vendedor, cliente:clientes(nombre)').gte('fecha', inicioMes).lte('fecha', finMes),
-          supabase.from('ventas_detalle').select('total, vendedor, nombre_comprador').gte('fecha', inicioMes).lte('fecha', finMes),
+          // Vendedores del mes (ventas entregadas/pagadas)
+          supabase.from('pedidos').select('total, vendedor, cliente:clientes(nombre)').in('estado', ['entregado', 'pagado']).gte('fecha', inicioMes).lte('fecha', finMes),
+          supabase.from('ventas_detalle').select('total, vendedor, nombre_comprador').in('estado', ['entregado', 'pagado']).gte('fecha', inicioMes).lte('fecha', finMes),
         ]);
 
         const pedidosMes = (pedidosMesRes.data || []) as any[];

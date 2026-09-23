@@ -64,12 +64,14 @@ export default function VentasMesPage() {
           supabase
             .from('pedidos')
             .select('fecha, total, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))')
+            .in('estado', ['entregado', 'pagado'])
             .gte('fecha', inicioMes)
             .lte('fecha', finMes)
             .order('fecha', { ascending: true }),
           supabase
             .from('ventas_detalle')
             .select('fecha, total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))')
+            .in('estado', ['entregado', 'pagado'])
             .gte('fecha', inicioMes)
             .lte('fecha', finMes)
             .order('fecha', { ascending: true }),
@@ -144,8 +146,8 @@ export default function VentasMesPage() {
       const inicioAnio = `${anio}-01-01`;
       const finAnio = `${anio}-12-31`;
       const [pedidosRes, detalleRes, eventosRes] = await Promise.all([
-        supabase.from('pedidos').select('fecha, total').gte('fecha', inicioAnio).lte('fecha', finAnio),
-        supabase.from('ventas_detalle').select('fecha, total').gte('fecha', inicioAnio).lte('fecha', finAnio),
+        supabase.from('pedidos').select('fecha, total').in('estado', ['entregado', 'pagado']).gte('fecha', inicioAnio).lte('fecha', finAnio),
+        supabase.from('ventas_detalle').select('fecha, total').in('estado', ['entregado', 'pagado']).gte('fecha', inicioAnio).lte('fecha', finAnio),
         supabase.from('ventas_evento').select('total, evento:eventos(fecha)').gte('eventos.fecha', inicioAnio).lte('eventos.fecha', finAnio),
       ]);
       const totales = Array(12).fill(0);
@@ -252,7 +254,7 @@ export default function VentasMesPage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>Total vendido en {MESES[mes]}</p>
           <p className="text-4xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(totalGeneral)}</p>
-          <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Se cuenta <span style={{ color: '#4caf50' }}>desde que ingresas la venta</span></p>
+          <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Cuenta desde que la venta está <span style={{ color: '#4caf50' }}>entregada</span></p>
         </div>
         <span className="text-5xl">📈</span>
       </div>
