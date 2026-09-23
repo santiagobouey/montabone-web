@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Cliente, TipoCliente } from '@/types';
+import { prepararArchivoIA } from '@/lib/imagen';
 
 const TIPOS: TipoCliente[] = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'otro'];
 const TIPO_LABELS: Record<TipoCliente, string> = {
@@ -51,18 +52,13 @@ export default function ClientesPage() {
   async function escanearBoleta(file: File) {
     setEscaneando(true);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const { base64, mediaType } = await prepararArchivoIA(file);
       const res = await fetch('/api/leer-cliente-foto', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ base64, mediaType: file.type }),
+        body: JSON.stringify({ base64, mediaType }),
       });
-      const c = await res.json();
-      if (!res.ok) throw new Error(c.error || 'No se pudo leer');
+      const c = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(c.error || `No se pudo leer (error ${res.status})`);
       if (c.nombre) setNombre(c.nombre);
       if (c.nombre_contacto) setNombreContacto(c.nombre_contacto);
       if (c.telefono) setTelefono(c.telefono);

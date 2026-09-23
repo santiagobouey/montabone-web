@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { prepararArchivoIA } from '@/lib/imagen';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 
@@ -56,19 +57,14 @@ export default function ProveedoresPage() {
     setAnalizado(false);
     setAnalizando(true);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+      const { base64, mediaType } = await prepararArchivoIA(file);
       const res = await fetch('/api/leer-factura', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ base64, mediaType: file.type }),
+        body: JSON.stringify({ base64, mediaType }),
       });
-      if (!res.ok) throw new Error('No se pudo analizar');
-      const datos = await res.json();
+      const datos = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(datos.error || `No se pudo analizar (error ${res.status})`);
 
       if (datos.neto) setNeto(String(datos.neto));
       else if (datos.total) setNeto(String(Math.round(datos.total / 1.19)));
@@ -81,8 +77,8 @@ export default function ProveedoresPage() {
       }
       if (datos.numero) setDescripcion(`Factura N° ${datos.numero}`);
       setAnalizado(true);
-    } catch {
-      // Si falla, el usuario llena los datos a mano
+    } catch (e: unknown) {
+      alert('No se pudo leer la factura: ' + (e instanceof Error ? e.message : 'error desconocido') + '\n\nPuedes llenar los datos a mano.');
     }
     setAnalizando(false);
   }
