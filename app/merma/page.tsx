@@ -7,7 +7,7 @@ import PieChart from '@/components/PieChart';
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
-type Motivo = 'devolucion' | 'degustacion' | 'muestra' | 'muestra_influencer' | 'cambio';
+type Motivo = 'devolucion' | 'degustacion' | 'muestra' | 'muestra_influencer' | 'cambio' | 'vencimiento' | 'trueque';
 
 interface ProductoOpt {
   id: string;
@@ -45,6 +45,8 @@ const MOTIVOS: { key: Motivo; label: string; color: string }[] = [
   { key: 'muestra', label: '🎁 Muestra a local', color: '#9c27b0' },
   { key: 'muestra_influencer', label: '📣 Muestra a influencer', color: '#2196f3' },
   { key: 'cambio', label: '🔄 Cambio', color: '#00bcd4' },
+  { key: 'vencimiento', label: '⏰ Vencimiento', color: '#795548' },
+  { key: 'trueque', label: '🤝 Trueque', color: '#4caf50' },
 ];
 
 export default function MermaPage() {
@@ -225,11 +227,6 @@ export default function MermaPage() {
   const valorDe = (m: Merma) => (m.producto?.precio ?? 0) * m.cantidad;
   const costoDe = (m: Merma) => (m.producto?.costo ?? 0) * m.cantidad;
   const costoTotalMerma = mermas.reduce((s, m) => s + costoDe(m), 0);
-  const totalDevolucion = mermas.filter((m) => m.motivo === 'devolucion');
-  const totalDegustacion = mermas.filter((m) => m.motivo === 'degustacion');
-  const totalMuestra = mermas.filter((m) => m.motivo === 'muestra');
-  const totalMuestraInf = mermas.filter((m) => m.motivo === 'muestra_influencer');
-  const totalCambio = mermas.filter((m) => m.motivo === 'cambio');
   const totalUnidades = items.reduce((s, i) => s + i.cantidad, 0);
   const colorMotivo = MOTIVOS.find((x) => x.key === motivo)!.color;
 
@@ -501,13 +498,9 @@ export default function MermaPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-6">
-        {[
-          { label: '↩️ Devoluciones', lista: totalDevolucion, color: '#e53935' },
-          { label: '🍴 Degustaciones', lista: totalDegustacion, color: '#ff9800' },
-          { label: '🎁 Muestras a locales', lista: totalMuestra, color: '#9c27b0' },
-          { label: '📣 Muestras a influencer', lista: totalMuestraInf, color: '#2196f3' },
-          { label: '🔄 Cambios', lista: totalCambio, color: '#00bcd4' },
-        ].map((t) => (
+        {MOTIVOS.map((mo) => ({ label: mo.label, color: mo.color, lista: mermas.filter((m) => m.motivo === mo.key) }))
+          .filter((t) => t.lista.length > 0)
+          .map((t) => (
           <div key={t.label} className="rounded-xl border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: t.color }}>
             <p className="text-xs" style={{ color: '#6b7280' }}>{t.label}</p>
             <p className="text-2xl font-extrabold" style={{ color: t.color }}>{t.lista.reduce((s, m) => s + m.cantidad, 0)} <span className="text-sm">uds</span></p>
