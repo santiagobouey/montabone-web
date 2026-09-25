@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import PieChart from '@/components/PieChart';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 type Motivo = 'devolucion' | 'degustacion' | 'muestra' | 'muestra_influencer' | 'cambio';
 
@@ -48,6 +50,32 @@ const MOTIVOS: { key: Motivo; label: string; color: string }[] = [
 export default function MermaPage() {
   const [mermas, setMermas] = useState<Merma[]>([]);
   const [productos, setProductos] = useState<ProductoOpt[]>([]);
+  // Informe
+  const hoyD = new Date();
+  const [vista, setVista] = useState<'registro' | 'informe'>('registro');
+  const [mesInf, setMesInf] = useState(hoyD.getMonth());
+  const [anioInf, setAnioInf] = useState(hoyD.getFullYear());
+  const [unidadesVendidasMes, setUnidadesVendidasMes] = useState(0);
+
+  // Unidades vendidas del mes del informe (para calcular el % de merma)
+  useEffect(() => {
+    async function cargarVendidas() {
+      const ini = `${anioInf}-${String(mesInf + 1).padStart(2, '0')}-01`;
+      const fin = `${anioInf}-${String(mesInf + 1).padStart(2, '0')}-${String(new Date(anioInf, mesInf + 1, 0).getDate()).padStart(2, '0')}`;
+      const [pedR, detR, eveR] = await Promise.all([
+        supabase.from('pedidos').select('detalle:detalle_pedido(cantidad)').in('estado', ['entregado', 'pagado']).gte('fecha', ini).lte('fecha', fin),
+        supabase.from('ventas_detalle').select('items:items_venta_detalle(cantidad)').in('estado', ['entregado', 'pagado']).gte('fecha', ini).lte('fecha', fin),
+        supabase.from('ventas_evento').select('cantidad').gte('fecha', ini).lte('fecha', fin),
+      ]);
+      const suma = (filas: any[]) => (filas || []).reduce((s: number, x: any) => s + (x.cantidad || 0), 0);
+      const total =
+        ((pedR.data || []) as any[]).reduce((s, p) => s + suma(p.detalle), 0) +
+        ((detR.data || []) as any[]).reduce((s, v) => s + suma(v.items), 0) +
+        ((eveR.data || []) as any[]).reduce((s, v) => s + (v.cantidad || 0), 0);
+      setUnidadesVendidasMes(total);
+    }
+    if (vista === 'informe') cargarVendidas();
+  }, [mesInf, anioInf, vista]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -222,6 +250,37 @@ export default function MermaPage() {
   const segPendientes = gruposSeg.filter((g) => g.hechos < g.total).sort((a, b) => a.fecha.localeCompare(b.fecha));
   const segHechos = gruposSeg.filter((g) => g.hechos >= g.total).sort((a, b) => b.fecha.localeCompare(a.fecha));
 
+  // ===== INFORME DEL MES =====
+  const claveMes = `${anioInf}-${String(mesInf + 1).padStart(2, '0')}`;
+  const mermasMes = mermas.filter((m) => (m.fecha || '').slice(0, 7) === claveMes);
+  const inf = {
+    unidades: mermasMes.reduce((s, m) => s + m.cantidad, 0),
+    costo: mermasMes.reduce((s, m) => s + costoDe(m), 0),
+    venta: mermasMes.reduce((s, m) => s + valorDe(m), 0),
+    registros: mermasMes.length,
+  };
+  const pctMerma = unidadesVendidasMes + inf.unidades > 0
+    ? (inf.unidades / (unidadesVendidasMes + inf.unidades)) * 100 : 0;
+  const porMotivo = MOTIVOS.map((mo) => {
+    const l = mermasMes.filter((m) => m.motivo === mo.key);
+    return { key: mo.key, label: mo.label, color: mo.color, unidades: l.reduce((s, m) => s + m.cantidad, 0), costo: l.reduce((s, m) => s + costoDe(m), 0) };
+  }).filter((x) => x.unidades > 0);
+  const prodInf: Record<string, { unidades: number; costo: number }> = {};
+  for (const m of mermasMes) {
+    const n = m.producto?.nombre ?? 'Sin producto';
+    if (!prodInf[n]) prodInf[n] = { unidades: 0, costo: 0 };
+    prodInf[n].unidades += m.cantidad; prodInf[n].costo += costoDe(m);
+  }
+  const porProductoInf = Object.entries(prodInf).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.costo - a.costo);
+  const destInf: Record<string, { unidades: number; costo: number }> = {};
+  for (const m of mermasMes) {
+    const n = m.destino_nombre || m.influencer?.nombre || m.cliente?.nombre;
+    if (!n) continue;
+    if (!destInf[n]) destInf[n] = { unidades: 0, costo: 0 };
+    destInf[n].unidades += m.cantidad; destInf[n].costo += costoDe(m);
+  }
+  const porDestinoInf = Object.entries(destInf).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.costo - a.costo);
+
   return (
     <div className="p-4 md:p-6 pb-24 md:pb-6 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-4">
@@ -235,6 +294,160 @@ export default function MermaPage() {
         </button>
       </div>
 
+      {/* Estilos de impresión del informe */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @media print {
+          body * { visibility: hidden !important; }
+          #informe-merma, #informe-merma * { visibility: visible !important; }
+          #informe-merma { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; }
+          #informe-merma, #informe-merma * { color: #111 !important; background: #fff !important; border-color: #ccc !important; }
+          .no-print { display: none !important; }
+          .print-only { display: block !important; }
+        }
+        .print-only { display: none; }
+      ` }} />
+
+      {/* Vista: registro / informe */}
+      <div className="grid grid-cols-2 gap-2 mb-4 no-print">
+        {([['registro', '📝 Registro'], ['informe', '📊 Informe']] as const).map(([k, lbl]) => (
+          <button key={k} onClick={() => setVista(k)}
+            className="py-2 rounded-lg border text-sm font-semibold"
+            style={{ backgroundColor: vista === k ? '#e5393520' : 'transparent', borderColor: vista === k ? '#e53935' : '#2a2a2a', color: vista === k ? '#e53935' : '#9ca3af' }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {vista === 'informe' ? (
+        <>
+          {/* Selector de mes */}
+          <div className="rounded-xl border p-4 mb-4 no-print" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+            <div className="flex items-center justify-between mb-3">
+              <button onClick={() => setAnioInf((a) => a - 1)} className="w-8 h-8 rounded-lg border" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>‹</button>
+              <p className="font-bold" style={{ color: '#f5f5f5' }}>{anioInf}</p>
+              <button onClick={() => setAnioInf((a) => a + 1)} disabled={anioInf >= hoyD.getFullYear()} className="w-8 h-8 rounded-lg border disabled:opacity-30" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>›</button>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {MESES.map((m, i) => {
+                const esFuturo = anioInf === hoyD.getFullYear() && i > hoyD.getMonth();
+                return (
+                  <button key={m} onClick={() => !esFuturo && setMesInf(i)} disabled={esFuturo}
+                    className="py-2 rounded-lg text-xs font-semibold border disabled:opacity-30"
+                    style={{ borderColor: mesInf === i ? '#e53935' : '#2a2a2a', backgroundColor: mesInf === i ? '#e5393520' : 'transparent', color: mesInf === i ? '#e53935' : '#9ca3af' }}>
+                    {m.slice(0, 3)}
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={() => window.print()} className="w-full mt-3 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#2196f3' }}>🖨️ Imprimir informe</button>
+          </div>
+
+          <div id="informe-merma">
+            <div className="print-only" style={{ marginBottom: 16 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Montabone — Informe de Mermas</h1>
+              <p style={{ fontSize: 14, margin: '4px 0 0' }}>{MESES[mesInf]} {anioInf} · Emitido {new Date().toLocaleDateString('es-CL')}</p>
+            </div>
+
+            {/* Resumen */}
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#e53935' }}>
+                <p className="text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>💸 Costo de la merma</p>
+                <p className="text-2xl font-extrabold" style={{ color: '#e53935' }}>{fmt(inf.costo)}</p>
+              </div>
+              <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
+                <p className="text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>📦 Paquetes mermados</p>
+                <p className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{inf.unidades.toLocaleString('es-CL')}</p>
+              </div>
+              <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#9c27b0' }}>
+                <p className="text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>🏷️ Valor de venta perdido</p>
+                <p className="text-2xl font-extrabold" style={{ color: '#9c27b0' }}>{fmt(inf.venta)}</p>
+              </div>
+              <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#2196f3' }}>
+                <p className="text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>📉 % de merma</p>
+                <p className="text-2xl font-extrabold" style={{ color: '#2196f3' }}>{pctMerma.toFixed(1)}%</p>
+                <p className="text-xs mt-1" style={{ color: '#6b7280' }}>{unidadesVendidasMes.toLocaleString('es-CL')} vendidos</p>
+              </div>
+            </div>
+
+            {inf.registros === 0 ? (
+              <div className="rounded-xl border p-6 text-center" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', color: '#6b7280' }}>
+                <p className="text-3xl mb-2">📭</p><p>Sin mermas en {MESES[mesInf]} {anioInf}</p>
+              </div>
+            ) : (
+              <>
+                {/* Por motivo */}
+                <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+                  <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+                    <p className="text-sm font-bold" style={{ color: '#f5f5f5' }}>Por motivo</p>
+                  </div>
+                  {porMotivo.map((x, i) => (
+                    <div key={x.key} className="flex justify-between items-center px-4 py-2.5" style={{ borderBottom: i < porMotivo.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+                      <span className="text-sm" style={{ color: '#9ca3af' }}>{x.label}</span>
+                      <span className="text-sm"><span className="font-bold" style={{ color: x.color }}>{x.unidades} u.</span> <span style={{ color: '#6b7280' }}>· {fmt(x.costo)}</span></span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Por producto */}
+                <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+                  <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+                    <p className="text-sm font-bold" style={{ color: '#f5f5f5' }}>Por producto</p>
+                  </div>
+                  {porProductoInf.map((p, i) => (
+                    <div key={p.nombre} className="flex justify-between items-center px-4 py-2.5" style={{ borderBottom: i < porProductoInf.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+                      <span className="text-sm" style={{ color: '#9ca3af' }}>{p.nombre}</span>
+                      <span className="text-sm"><span className="font-bold" style={{ color: '#f5f5f5' }}>{p.unidades} u.</span> <span style={{ color: '#6b7280' }}>· {fmt(p.costo)}</span></span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Por destino */}
+                {porDestinoInf.length > 0 && (
+                  <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+                    <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+                      <p className="text-sm font-bold" style={{ color: '#f5f5f5' }}>Por destino (local / influencer / cliente)</p>
+                    </div>
+                    {porDestinoInf.map((x, i) => (
+                      <div key={x.nombre} className="flex justify-between items-center px-4 py-2.5" style={{ borderBottom: i < porDestinoInf.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+                        <span className="text-sm truncate pr-2" style={{ color: '#9ca3af' }}>{x.nombre}</span>
+                        <span className="text-sm flex-shrink-0"><span className="font-bold" style={{ color: '#f5f5f5' }}>{x.unidades} u.</span> <span style={{ color: '#6b7280' }}>· {fmt(x.costo)}</span></span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Gráficos */}
+                <div className="space-y-3 mb-4">
+                  <PieChart titulo="🥧 Costo de merma por motivo" data={porMotivo.map((x) => ({ label: x.label, value: x.costo }))} />
+                  <PieChart titulo="🥧 Costo de merma por producto" data={porProductoInf.map((p) => ({ label: p.nombre, value: p.costo }))} />
+                  <PieChart titulo="🥧 Paquetes mermados por producto" data={porProductoInf.map((p) => ({ label: p.nombre, value: p.unidades }))} formato="num" />
+                </div>
+
+                {/* Detalle */}
+                <div className="rounded-xl border overflow-hidden" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+                  <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+                    <p className="text-sm font-bold" style={{ color: '#f5f5f5' }}>Detalle ({inf.registros} registro{inf.registros !== 1 ? 's' : ''})</p>
+                  </div>
+                  {[...mermasMes].sort((a, b) => a.fecha.localeCompare(b.fecha)).map((m, i) => {
+                    const mo = MOTIVOS.find((x) => x.key === m.motivo);
+                    const destino = m.destino_nombre || m.influencer?.nombre || m.cliente?.nombre;
+                    return (
+                      <div key={m.id} className="flex justify-between items-start px-4 py-2.5" style={{ borderBottom: i < mermasMes.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+                        <div className="min-w-0 pr-2">
+                          <p className="text-sm" style={{ color: '#f5f5f5' }}>{new Date(m.fecha + 'T12:00:00').toLocaleDateString('es-CL')} · {m.producto?.nombre ?? '—'} × {m.cantidad}</p>
+                          <p className="text-xs" style={{ color: mo?.color ?? '#6b7280' }}>{mo?.label ?? m.motivo}{destino ? ` · ${destino}` : ''}</p>
+                        </div>
+                        <span className="text-sm font-semibold flex-shrink-0" style={{ color: '#e53935' }}>{fmt(costoDe(m))}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      ) : (
+      <>
       {/* Seguimiento de muestras — estilo checklist como Pendientes */}
       {segPendientes.length > 0 && (
         <div className="rounded-xl border overflow-hidden mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
@@ -353,6 +566,8 @@ export default function MermaPage() {
             );
           })}
         </div>
+      )}
+      </>
       )}
 
       {/* Modal nueva merma */}
