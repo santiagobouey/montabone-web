@@ -166,15 +166,8 @@ export default function DashboardPage() {
           mayorLote.reduce((s, x) => s + x.costo, 0);
         const utilidadLote = ventasLote - costosLote;
 
-        // Valor del stock actual a precio de venta
-        // Prietas: $1.650 · Jalapeño: $2.770 · Resto: $2.810
-        const precioVentaStock = (nombre: string) => {
-          const n = (nombre || '').toLowerCase();
-          if (n.includes('prieta')) return 1650;
-          if (n.includes('jalape')) return 2770;
-          return 2810;
-        };
-        const valorStock = prods.reduce((s, p) => s + (p.stock || 0) * precioVentaStock(p.nombre), 0);
+        // Valor del stock actual a precio de venta (ficha de cada producto)
+        const valorStock = prods.reduce((s, p) => s + (p.stock || 0) * (p.precio || 0), 0);
         const costoStock = prods.reduce((s, p) => s + (p.stock || 0) * (p.costo || 0), 0);
         const paquetesStock = prods.reduce((s, p) => s + (p.stock || 0), 0);
 
