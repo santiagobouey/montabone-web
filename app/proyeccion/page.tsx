@@ -27,9 +27,9 @@ export default function ProyeccionPage() {
         const inicioStr = inicio.toISOString().split('T')[0];
 
         const [pedRes, detRes, eveRes] = await Promise.all([
-          supabase.from('pedidos').select('fecha, total').eq('estado', 'pagado').gte('fecha', inicioStr),
-          supabase.from('ventas_detalle').select('fecha, total').eq('estado', 'pagado').gte('fecha', inicioStr),
-          supabase.from('ventas_evento').select('total, evento:eventos(fecha)').gte('eventos.fecha', inicioStr),
+          supabase.from('pedidos').select('fecha, total').in('estado', ['entregado', 'pagado']).gte('fecha', inicioStr),
+          supabase.from('ventas_detalle').select('fecha, total').in('estado', ['entregado', 'pagado']).gte('fecha', inicioStr),
+          supabase.from('ventas_evento').select('total, fecha').gte('fecha', inicioStr),
         ]);
 
         const totales: Record<string, number> = {};
@@ -39,7 +39,7 @@ export default function ProyeccionPage() {
         };
         for (const p of (pedRes.data || []) as any[]) sumar(p.fecha, p.total);
         for (const v of (detRes.data || []) as any[]) sumar(v.fecha, v.total);
-        for (const v of ((eveRes.data || []) as any[]).filter((x) => x.evento)) sumar(v.evento.fecha, v.total);
+        for (const v of ((eveRes.data || []) as any[]).filter((x) => x.fecha)) sumar(v.fecha, v.total);
 
         // 6 meses reales (5 completos + actual)
         const lista: MesDato[] = [];

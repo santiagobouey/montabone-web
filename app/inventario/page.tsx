@@ -39,7 +39,7 @@ export default function InventarioPage() {
       const [pedRes, detRes, eveRes] = await Promise.all([
         supabase.from('detalle_pedido').select('producto_id, cantidad, pedido:pedidos(fecha)'),
         supabase.from('items_venta_detalle').select('producto_id, cantidad, venta:ventas_detalle(fecha)'),
-        supabase.from('ventas_evento').select('producto_id, cantidad, evento:eventos(fecha)'),
+        supabase.from('ventas_evento').select('producto_id, cantidad, fecha'),
       ]);
       const unidades: Record<string, number> = {};
       for (const d of (pedRes.data || []) as any[]) {
@@ -49,7 +49,7 @@ export default function InventarioPage() {
         if (i.venta?.fecha >= hace30) unidades[i.producto_id] = (unidades[i.producto_id] || 0) + i.cantidad;
       }
       for (const v of (eveRes.data || []) as any[]) {
-        if (v.evento?.fecha >= hace30) unidades[v.producto_id] = (unidades[v.producto_id] || 0) + v.cantidad;
+        if (v.fecha >= hace30) unidades[v.producto_id] = (unidades[v.producto_id] || 0) + v.cantidad;
       }
       setRitmoVenta(unidades);
     } catch {}

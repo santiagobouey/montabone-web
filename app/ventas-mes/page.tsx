@@ -77,15 +77,15 @@ export default function VentasMesPage() {
             .order('fecha', { ascending: true }),
           supabase
             .from('ventas_evento')
-            .select('total, cantidad, precio_unitario, producto:productos(nombre), evento:eventos(nombre, fecha)')
-            .gte('eventos.fecha', inicioMes)
-            .lte('eventos.fecha', finMes),
+            .select('total, cantidad, precio_unitario, fecha, evento_nombre, producto:productos(nombre)')
+            .gte('fecha', inicioMes)
+            .lte('fecha', finMes),
           supabase.from('clientes').select('tipo'),
         ]);
 
         const pedidos = (pedidosRes.data || []) as any[];
         const detalle = (detalleRes.data || []) as any[];
-        const eventosRaw = ((eventosRes.data || []) as any[]).filter((v) => v.evento);
+        const eventosRaw = ((eventosRes.data || []) as any[]).filter((v) => v.fecha);
 
         // ---- Gráficos de torta ----
         const prodMap: Record<string, number> = {};
@@ -129,7 +129,7 @@ export default function VentasMesPage() {
         }
 
         for (const v of eventosRaw) {
-          filas.push({ tipo: 'Evento', fecha: v.evento?.fecha ?? '', cliente: v.evento?.nombre ?? '—', productos: `${v.producto?.nombre ?? '—'} x${v.cantidad}`, total: v.total });
+          filas.push({ tipo: 'Evento', fecha: v.fecha ?? '', cliente: v.evento_nombre ?? 'Evento', productos: `${v.producto?.nombre ?? '—'} x${v.cantidad}`, total: v.total });
         }
 
         filas.sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -148,7 +148,7 @@ export default function VentasMesPage() {
       const [pedidosRes, detalleRes, eventosRes] = await Promise.all([
         supabase.from('pedidos').select('fecha, total').in('estado', ['entregado', 'pagado']).gte('fecha', inicioAnio).lte('fecha', finAnio),
         supabase.from('ventas_detalle').select('fecha, total').in('estado', ['entregado', 'pagado']).gte('fecha', inicioAnio).lte('fecha', finAnio),
-        supabase.from('ventas_evento').select('total, evento:eventos(fecha)').gte('eventos.fecha', inicioAnio).lte('eventos.fecha', finAnio),
+        supabase.from('ventas_evento').select('total, fecha').gte('fecha', inicioAnio).lte('fecha', finAnio),
       ]);
       const totales = Array(12).fill(0);
       for (const p of (pedidosRes.data || []) as any[]) {
@@ -159,8 +159,8 @@ export default function VentasMesPage() {
         const m = parseInt(v.fecha.slice(5, 7)) - 1;
         if (m >= 0 && m < 12) totales[m] += v.total;
       }
-      for (const v of ((eventosRes.data || []) as any[]).filter((x) => x.evento)) {
-        const m = parseInt(v.evento.fecha.slice(5, 7)) - 1;
+      for (const v of ((eventosRes.data || []) as any[]).filter((x) => x.fecha)) {
+        const m = parseInt(v.fecha.slice(5, 7)) - 1;
         if (m >= 0 && m < 12) totales[m] += v.total;
       }
       setVentasPorMes(totales);

@@ -21,7 +21,7 @@ export default function RespaldoPage() {
         supabase.from('productos').select('nombre, formato, stock, precio, costo, fecha_ingreso, fecha_vencimiento').order('nombre'),
         supabase.from('pedidos').select('fecha, estado, total, vendedor, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))').order('fecha', { ascending: false }),
         supabase.from('ventas_detalle').select('fecha, estado, total, nombre_comprador, vendedor, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))').order('fecha', { ascending: false }),
-        supabase.from('ventas_evento').select('cantidad, precio_unitario, total, producto:productos(nombre), evento:eventos(nombre, fecha)'),
+        supabase.from('ventas_evento').select('cantidad, precio_unitario, total, fecha, evento_nombre, producto:productos(nombre)'),
         supabase.from('facturas').select('tipo, categoria, fecha, contraparte, rut, neto, iva, monto, folio, pagada, descripcion').order('fecha', { ascending: false }),
         supabase.from('costos_factura').select('created_at, monto, neto, iva, descripcion').order('created_at', { ascending: false }),
         supabase.from('mermas').select('fecha, motivo, cantidad, destino_nombre, producto:productos(nombre), cliente:clientes(nombre), influencer:influencers(nombre)').order('fecha', { ascending: false }),
@@ -65,7 +65,7 @@ export default function RespaldoPage() {
 
       // Ventas en eventos
       hoja('Ventas eventos', ((eventosRes.data || []) as any[]).map((v) => ({
-        Evento: v.evento?.nombre ?? '', Fecha: v.evento?.fecha ?? '', Producto: v.producto?.nombre ?? '',
+        Evento: v.evento_nombre ?? '', Fecha: v.fecha ?? '', Producto: v.producto?.nombre ?? '',
         Cantidad: v.cantidad, 'Precio unit.': v.precio_unitario, Total: v.total,
       })));
 
