@@ -5,10 +5,10 @@ import { supabase } from '@/lib/supabase';
 import { Prospecto, TipoCliente, EstadoProspecto } from '@/types';
 import { REGIONES } from '@/lib/regiones';
 
-const TIPOS: TipoCliente[] = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'otro'];
+const TIPOS: TipoCliente[] = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'banquetera', 'otro'];
 const TIPO_LABELS: Record<TipoCliente, string> = {
   carniceria: 'Carnicería', distribuidor: 'Distribuidor', restaurante: 'Restaurante',
-  supermercado: 'Supermercado', particular: 'Particular', botilleria: 'Botillería', otro: 'Otro',
+  supermercado: 'Supermercado', particular: 'Particular', botilleria: 'Botillería', banquetera: 'Banquetera', otro: 'Otro',
 };
 const ESTADOS: EstadoProspecto[] = ['potencial', 'contactado', 'pendiente', 'cerrado', 'no_interesado'];
 const ESTADO_COLORS: Record<EstadoProspecto, string> = {
@@ -68,7 +68,7 @@ export default function ProspectosPage() {
       const res = await fetch('/api/buscar-prospectos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ zona: `${zonaBusqueda.trim()}, Región ${regionBusqueda}, Chile`, tipo: tipoBusqueda }),
+        body: JSON.stringify({ zona: zonaBusqueda.trim(), region: regionBusqueda, tipo: tipoBusqueda }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error en la búsqueda');
@@ -527,6 +527,7 @@ export default function ProspectosPage() {
                 { key: 'carniceria', label: '🥩 Carnicerías' },
                 { key: 'botilleria', label: '🍷 Botillerías' },
                 { key: 'otro', label: '🏪 Minimarkets' },
+                { key: 'banquetera', label: '🍖 Banqueteras (asados)' },
               ].map((t) => (
                 <button key={t.key} onClick={() => setTipoBusqueda(t.key)}
                   className="px-3 py-1.5 rounded-full border text-xs font-medium"

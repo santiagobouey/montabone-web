@@ -12,7 +12,7 @@ interface Venta { fecha: string; total: number; tipo: 'pedido' | 'detalle' | 'ev
 
 const TIPO_LABELS: Record<string, string> = {
   carniceria: 'Carnicerías', distribuidor: 'Distribuidores', restaurante: 'Restaurantes',
-  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', otro: 'Otros',
+  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', banquetera: 'Banqueteras', otro: 'Otros',
 };
 
 function lunesDe(d: Date) {

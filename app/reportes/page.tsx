@@ -10,7 +10,7 @@ const neto = (conIva: number) => Math.round(conIva / 1.19);
 
 const TIPO_LABELS: Record<string, string> = {
   carniceria: 'Carnicerías', distribuidor: 'Distribuidores', restaurante: 'Restaurantes',
-  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', otro: 'Otros',
+  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', banquetera: 'Banqueteras', otro: 'Otros',
 };
 const COMPRADORES_EXCLUIDOS = ['santiago bouey', 'hernan torres'];
 const norm = (s: string | null) => (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();

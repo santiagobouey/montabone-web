@@ -28,7 +28,7 @@ export interface Cliente {
   created_at: string;
 }
 
-export type TipoCliente = 'carniceria' | 'distribuidor' | 'restaurante' | 'supermercado' | 'particular' | 'botilleria' | 'otro';
+export type TipoCliente = 'carniceria' | 'distribuidor' | 'restaurante' | 'supermercado' | 'particular' | 'botilleria' | 'banquetera' | 'otro';
 
 export type EstadoPedido = 'pendiente' | 'preparado' | 'entregado' | 'pagado';
 

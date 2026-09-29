@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 Extrae los datos del CLIENTE/COMPRADOR (la otra parte, NO Montabone) para agregarlo a una lista de clientes.
 
 Tipos válidos (elige el que mejor corresponda; si no sabes usa "otro"):
-"carniceria", "distribuidor", "restaurante", "supermercado", "particular", "botilleria", "otro"
+"carniceria", "distribuidor", "restaurante", "supermercado", "particular", "botilleria", "banquetera", "otro"
 
 Responde SOLO con un JSON válido, sin texto adicional ni markdown:
 {
@@ -69,7 +69,7 @@ Reglas: NO uses los datos de Cecinas Montabone (es el vendedor). Si un dato no a
     }
 
     const c = JSON.parse(match[0]);
-    const TIPOS = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'otro'];
+    const TIPOS = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'banquetera', 'otro'];
     return NextResponse.json({
       nombre: (c.nombre || c.razon_social || '').toString().trim(),
       razon_social: c.razon_social || null,

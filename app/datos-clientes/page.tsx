@@ -18,7 +18,7 @@ interface DatosCliente {
 
 const TIPO_LABELS: Record<string, string> = {
   carniceria: 'Carnicería', distribuidor: 'Distribuidor', restaurante: 'Restaurante',
-  supermercado: 'Supermercado', particular: 'Particular', botilleria: 'Botillería', otro: 'Otro',
+  supermercado: 'Supermercado', particular: 'Particular', botilleria: 'Botillería', banquetera: 'Banquetera', otro: 'Otro',
 };
 
 export default function DatosClientesPage() {

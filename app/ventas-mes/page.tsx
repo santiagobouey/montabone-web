@@ -8,7 +8,7 @@ const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const TIPO_LABELS: Record<string, string> = {
   carniceria: 'Carnicerías', distribuidor: 'Distribuidores', restaurante: 'Restaurantes',
-  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', otro: 'Otros',
+  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', banquetera: 'Banqueteras', otro: 'Otros',
 };
 
 interface ResumenMes {

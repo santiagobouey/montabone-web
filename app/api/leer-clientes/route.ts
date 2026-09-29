@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 El texto puede venir pegado desde un mensaje, un correo, una planilla o una lista desordenada. Puede haber uno o varios clientes.
 
 Tipos válidos (elige el que mejor corresponda, si no sabes usa "otro"):
-"carniceria", "distribuidor", "restaurante", "supermercado", "particular", "botilleria", "otro"
+"carniceria", "distribuidor", "restaurante", "supermercado", "particular", "botilleria", "banquetera", "otro"
 
 Responde SOLO con un JSON válido, sin texto adicional ni markdown, con esta forma exacta:
 {
@@ -74,7 +74,7 @@ ${texto.slice(0, 8000)}
     }
 
     const parsed = JSON.parse(match[0]);
-    const TIPOS = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'otro'];
+    const TIPOS = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'banquetera', 'otro'];
     const clientes = (Array.isArray(parsed.clientes) ? parsed.clientes : [])
       .filter((c: any) => c && (c.nombre || c.razon_social))
       .map((c: any) => ({

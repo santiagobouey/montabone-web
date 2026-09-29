@@ -5,10 +5,10 @@ import { supabase } from '@/lib/supabase';
 import { Cliente, TipoCliente } from '@/types';
 import { prepararArchivoIA } from '@/lib/imagen';
 
-const TIPOS: TipoCliente[] = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'otro'];
+const TIPOS: TipoCliente[] = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'banquetera', 'otro'];
 const TIPO_LABELS: Record<TipoCliente, string> = {
   carniceria: 'Carnicería', distribuidor: 'Distribuidor', restaurante: 'Restaurante',
-  supermercado: 'Supermercado', particular: 'Particular', botilleria: 'Botillería', otro: 'Otro',
+  supermercado: 'Supermercado', particular: 'Particular', botilleria: 'Botillería', banquetera: 'Banquetera', otro: 'Otro',
 };
 
 const COMUNAS_SANTIAGO = [

@@ -14,6 +14,13 @@ const FILTROS: Record<string, string[]> = {
   carniceria: ['node["shop"="butcher"]', 'way["shop"="butcher"]'],
   botilleria: ['node["shop"="alcohol"]', 'way["shop"="alcohol"]'],
   otro: ['node["shop"~"convenience|deli|greengrocer"]', 'way["shop"~"convenience|deli|greengrocer"]'],
+  // Banqueteras / catering, con énfasis en asados y parrillas
+  banquetera: [
+    'node["craft"="caterer"]', 'way["craft"="caterer"]',
+    'node["shop"="catering"]', 'way["shop"="catering"]',
+    'node["cuisine"~"barbecue|bbq|asado|parrilla|grill",i]', 'way["cuisine"~"barbecue|bbq|asado|parrilla|grill",i]',
+    'node["name"~"banquetera|banquetería|catering|asados|parrilla",i]', 'way["name"~"banquetera|banquetería|catering|asados|parrilla",i]',
+  ],
 };
 
 // Cadenas grandes que no sirven como prospectos
@@ -31,6 +38,12 @@ function esCadena(nombre: string): boolean {
 
 function tipoDesdeOSM(tags: Record<string, string>): string {
   const shop = tags.shop || '';
+  const craft = tags.craft || '';
+  const cocina = (tags.cuisine || '').toLowerCase();
+  const nombre = (tags.name || '').toLowerCase();
+  if (craft === 'caterer' || shop === 'catering') return 'banquetera';
+  if (/barbecue|bbq|asado|parrilla|grill/.test(cocina)) return 'banquetera';
+  if (/banquetera|banqueter|catering|asados/.test(nombre)) return 'banquetera';
   if (shop === 'butcher') return 'carniceria';
   if (shop === 'alcohol') return 'botilleria';
   return 'otro';
@@ -38,7 +51,7 @@ function tipoDesdeOSM(tags: Record<string, string>): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { zona, tipo } = await req.json();
+    const { zona, region, tipo } = await req.json();
     if (!zona) {
       return NextResponse.json({ error: 'Falta la comuna' }, { status: 400 });
     }
@@ -77,7 +90,7 @@ out center tags 80;
         const calle = [t['addr:street'], t['addr:housenumber']].filter(Boolean).join(' ');
         return {
           nombre: t.name,
-          direccion: calle ? `${calle}, ${zona}` : String(zona),
+          direccion: [calle, String(zona), region ? String(region) : null].filter(Boolean).join(', '),
           telefono: t.phone || t['contact:phone'] || null,
           tipo: tipoDesdeOSM(t),
           nota: [t.cuisine ? `Cocina: ${t.cuisine}` : null, t['contact:instagram'] || t.website || null]

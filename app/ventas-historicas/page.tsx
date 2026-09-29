@@ -8,7 +8,7 @@ const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 const COLORES = ['#e53935', '#ff9800', '#4caf50', '#2196f3', '#9c27b0', '#00bcd4'];
 const TIPO_LABELS: Record<string, string> = {
   carniceria: 'Carnicerías', distribuidor: 'Distribuidores', restaurante: 'Restaurantes',
-  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', otro: 'Otros',
+  supermercado: 'Supermercados', particular: 'Particulares', botilleria: 'Botillerías', banquetera: 'Banqueteras', otro: 'Otros',
 };
 
 interface ProdVenta { nombre: string; unidades: number; total: number; }
