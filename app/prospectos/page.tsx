@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Prospecto, TipoCliente, EstadoProspecto } from '@/types';
+import { REGIONES } from '@/lib/regiones';
 
 const TIPOS: TipoCliente[] = ['carniceria', 'distribuidor', 'restaurante', 'supermercado', 'particular', 'botilleria', 'otro'];
 const TIPO_LABELS: Record<TipoCliente, string> = {
@@ -16,16 +17,6 @@ const ESTADO_COLORS: Record<EstadoProspecto, string> = {
 const ESTADO_LABELS: Record<EstadoProspecto, string> = {
   potencial: 'potencial', contactado: 'contactado', pendiente: 'pendiente', cerrado: 'cerrado', no_interesado: 'no interesado',
 };
-const COMUNAS_SANTIAGO = [
-  'Cerrillos', 'Cerro Navia', 'Conchalí', 'El Bosque', 'Estación Central',
-  'Huechuraba', 'Independencia', 'La Cisterna', 'La Florida', 'La Granja',
-  'La Pintana', 'La Reina', 'Las Condes', 'Lo Barnechea', 'Lo Espejo',
-  'Lo Prado', 'Macul', 'Maipú', 'Ñuñoa', 'Padre Hurtado', 'Pedro Aguirre Cerda',
-  'Peñalolén', 'Providencia', 'Pudahuel', 'Quilicura', 'Quinta Normal',
-  'Recoleta', 'Renca', 'San Bernardo', 'San Joaquín', 'San Miguel',
-  'San Ramón', 'Santiago', 'Vitacura',
-];
-
 export default function ProspectosPage() {
   const [prospectos, setProspectos] = useState<Prospecto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +45,7 @@ export default function ProspectosPage() {
   const [showBuscador, setShowBuscador] = useState(false);
   const [buscando, setBuscando] = useState(false);
   const [agregandoIA, setAgregandoIA] = useState(false);
+  const [regionBusqueda, setRegionBusqueda] = useState('');
   const [zonaBusqueda, setZonaBusqueda] = useState('');
   const [tipoBusqueda, setTipoBusqueda] = useState('todos');
   const [resultadosIA, setResultadosIA] = useState<ResultadoIA[]>([]);
@@ -76,7 +68,7 @@ export default function ProspectosPage() {
       const res = await fetch('/api/buscar-prospectos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ zona: zonaBusqueda.trim(), tipo: tipoBusqueda }),
+        body: JSON.stringify({ zona: `${zonaBusqueda.trim()}, Región ${regionBusqueda}, Chile`, tipo: tipoBusqueda }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error en la búsqueda');
@@ -364,8 +356,10 @@ export default function ProspectosPage() {
                 className="w-full rounded-lg px-3 py-2 text-sm border"
                 style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: comuna ? '#f5f5f5' : '#6b7280' }}>
                 <option value="">Seleccionar comuna...</option>
-                {COMUNAS_SANTIAGO.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                {REGIONES.map((r) => (
+                  <optgroup key={r.nombre} label={r.nombre}>
+                    {r.comunas.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
                 ))}
               </select>
             </div>
@@ -508,12 +502,22 @@ export default function ProspectosPage() {
             </div>
             <p className="text-xs mb-4" style={{ color: '#6b7280' }}>Busca negocios reales de una comuna y agrégalos como prospectos</p>
 
+            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Región</label>
+            <select value={regionBusqueda}
+              onChange={(e) => { setRegionBusqueda(e.target.value); setZonaBusqueda(''); }}
+              className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+              style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: regionBusqueda ? '#f5f5f5' : '#6b7280' }}>
+              <option value="">Seleccionar región...</option>
+              {REGIONES.map((r) => <option key={r.nombre} value={r.nombre}>{r.nombre}</option>)}
+            </select>
+
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Comuna</label>
             <select value={zonaBusqueda} onChange={(e) => setZonaBusqueda(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 mb-3 text-sm border"
+              disabled={!regionBusqueda}
+              className="w-full rounded-lg px-3 py-2 mb-3 text-sm border disabled:opacity-40"
               style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: zonaBusqueda ? '#f5f5f5' : '#6b7280' }}>
-              <option value="">Seleccionar comuna...</option>
-              {COMUNAS_SANTIAGO.map((c) => <option key={c} value={c}>{c}</option>)}
+              <option value="">{regionBusqueda ? 'Seleccionar comuna...' : 'Elige primero la región'}</option>
+              {(REGIONES.find((r) => r.nombre === regionBusqueda)?.comunas ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
 
             <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>Tipo de negocio</label>
