@@ -24,6 +24,7 @@ const NAV = [
   { href: '/costos', label: 'Proveedores', icon: '🏭' },
   { href: '/facturas', label: 'Facturas', icon: '🧾' },
   { href: '/cobros', label: 'Cobros', icon: '💰' },
+  { href: '/cuentas-cobrar', label: 'Cuentas por Cobrar', icon: '💳' },
   { href: '/gastos', label: 'Gastos', icon: '🧾' },
   { href: '/periodos', label: 'Períodos', icon: '🔒' },
   { href: '/tareas', label: 'Pendientes', icon: '✅' },
