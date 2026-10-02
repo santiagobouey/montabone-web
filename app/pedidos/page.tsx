@@ -233,9 +233,6 @@ export default function PedidosPage() {
       };
     });
     setItems(itemsCargados);
-    // Deducir si el total traía IVA (total ≈ neto*1.19)
-    const netoCarg = itemsCargados.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0);
-    setConIva(Math.abs(v.total - Math.round(netoCarg * 1.19)) <= Math.abs(v.total - netoCarg));
     setShowModal(true);
   }
 
@@ -386,7 +383,8 @@ export default function PedidosPage() {
     if (items.length === 0) return;
     setSaving(true);
     try {
-      const totalVenta = conIva ? Math.round(neto * 1.19) : neto;
+      // Boleta: el precio ingresado ya incluye el impuesto, no se suma IVA encima
+      const totalVenta = neto;
 
       if (editandoDetalle) {
         // Si la venta estaba entregada/pagada, devolver el stock de los items anteriores
@@ -1247,20 +1245,15 @@ export default function PedidosPage() {
                   <span className="text-sm" style={{ color: '#9ca3af' }}>Documento: <span className="font-bold" style={{ color: '#9c27b0' }}>Boleta</span></span>
                 </div>
 
-                <button onClick={() => setConIva(!conIva)}
-                  className="w-full flex items-center justify-between p-3 rounded-lg border mb-3"
-                  style={{ backgroundColor: conIva ? '#9c27b0' + '10' : '#1c1c1c', borderColor: conIva ? '#9c27b0' : '#2a2a2a' }}>
-                  <span className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>Incluir IVA 19%</span>
-                  <div className="w-10 h-5 rounded-full flex items-center px-0.5" style={{ backgroundColor: conIva ? '#9c27b0' : '#2a2a2a' }}>
-                    <div className="w-4 h-4 rounded-full bg-white transition-transform" style={{ transform: conIva ? 'translateX(20px)' : 'translateX(0)' }} />
-                  </div>
-                </button>
-
                 {items.length > 0 && (
                   <div className="mb-3 p-3 rounded-lg" style={{ backgroundColor: '#1c1c1c' }}>
-                    <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>Neto</span><span style={{ color: '#f5f5f5' }}>{fmt(neto)}</span></div>
-                    {conIva && <div className="flex justify-between text-sm mb-1"><span style={{ color: '#6b7280' }}>IVA 19%</span><span style={{ color: '#f5f5f5' }}>{fmt(Math.round(neto * 1.19) - neto)}</span></div>}
-                    <div className="flex justify-between font-bold"><span style={{ color: '#6b7280' }}>TOTAL</span><span className="text-xl" style={{ color: '#9c27b0' }}>{fmt(conIva ? Math.round(neto * 1.19) : neto)}</span></div>
+                    <div className="flex justify-between font-bold mb-2">
+                      <span style={{ color: '#6b7280' }}>TOTAL</span>
+                      <span className="text-xl" style={{ color: '#9c27b0' }}>{fmt(neto)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs mb-0.5"><span style={{ color: '#6b7280' }}>Neto</span><span style={{ color: '#9ca3af' }}>{fmt(Math.round(neto / 1.19))}</span></div>
+                    <div className="flex justify-between text-xs"><span style={{ color: '#6b7280' }}>IVA 19%</span><span style={{ color: '#9ca3af' }}>{fmt(neto - Math.round(neto / 1.19))}</span></div>
+                    <p className="text-xs mt-2" style={{ color: '#6b7280' }}>El precio de la boleta ya incluye el impuesto</p>
                   </div>
                 )}
 
