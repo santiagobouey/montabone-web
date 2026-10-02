@@ -984,6 +984,11 @@ export default function PedidosPage() {
                   </div>
                 ))}
 
+                <div className="flex items-center gap-2 p-3 rounded-lg border mb-3" style={{ backgroundColor: '#e5393510', borderColor: '#e53935' + '40' }}>
+                  <span className="text-sm">🧾</span>
+                  <span className="text-sm" style={{ color: '#9ca3af' }}>Documento: <span className="font-bold" style={{ color: '#e53935' }}>Factura</span></span>
+                </div>
+
                 <button onClick={() => setConIva(!conIva)}
                   className="w-full flex items-center justify-between p-3 rounded-lg border mb-3"
                   style={{ backgroundColor: conIva ? '#2196f3' + '10' : '#1c1c1c', borderColor: conIva ? '#2196f3' : '#2a2a2a' }}>
@@ -1236,6 +1241,11 @@ export default function PedidosPage() {
                     </div>
                   </div>
                 ))}
+
+                <div className="flex items-center gap-2 p-3 rounded-lg border mb-3" style={{ backgroundColor: '#9c27b010', borderColor: '#9c27b0' + '40' }}>
+                  <span className="text-sm">🧾</span>
+                  <span className="text-sm" style={{ color: '#9ca3af' }}>Documento: <span className="font-bold" style={{ color: '#9c27b0' }}>Boleta</span></span>
+                </div>
 
                 <button onClick={() => setConIva(!conIva)}
                   className="w-full flex items-center justify-between p-3 rounded-lg border mb-3"
