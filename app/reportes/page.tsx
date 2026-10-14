@@ -54,6 +54,7 @@ interface Reporte {
   cobradoAnteriores: number; pendienteAnteriores: number;
   stockUnidades: number;
   numClientes: number; ticketPedidos: number; ticketDetalle: number;
+  detalleConBoleta: number; detalleSinBoleta: number;
   vendedores: { nombre: string; ventas: number; comision: number }[];
 }
 
@@ -119,7 +120,7 @@ export default function ReportesPage() {
           pedCobAnt, detCobAnt, pedPendAnt, detPendAnt, gastosOpRes,
         ] = await Promise.all([
           supabase.from('pedidos').select('cliente_id, total, estado, vendedor, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
-          supabase.from('ventas_detalle').select('total, nombre_comprador, vendedor, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
+          supabase.from('ventas_detalle').select('total, nombre_comprador, vendedor, con_boleta, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
           supabase.from('ventas_evento').select('total, cantidad, producto:productos(nombre, costo)').gte('fecha', inicio).lte('fecha', fin),
           supabase.from('ventas_mayor').select('total, costo, cliente:clientes(nombre), items:items_venta_mayor(kilos, subtotal)').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
           supabase.from('clientes').select('id, nombre, tipo'),
@@ -195,6 +196,8 @@ export default function ReportesPage() {
         const porProducto = Object.values(prodMap).sort((a, b) => b.total - a.total);
         const precioProm = unidades > 0 ? (vPed + vDet + vEve) / unidades : 0;
         const precioPromKilo = kilos > 0 ? neto(vMay) / kilos : 0;
+        const detalleSinBoleta = ((detM.data || []) as any[]).filter((v) => v.con_boleta === false).reduce((s, v) => s + v.total, 0);
+        const detalleConBoleta = vDet - detalleSinBoleta;
         const numClientes = ((cli.data || []) as any[]).length;
         const ticketPedidos = ((pedM.data || []) as any[]).length > 0 ? vPed / ((pedM.data || []) as any[]).length : 0;
         const ticketDetalle = ((detM.data || []) as any[]).length > 0 ? vDet / ((detM.data || []) as any[]).length : 0;
@@ -282,7 +285,7 @@ export default function ReportesPage() {
           unidades, unidadesPedidos, unidadesDetalle, unidadesEventos, kilos, precioProm, precioPromKilo, porProducto, porCanal, topClientes,
           cogsEstimado, costoUnitProm, facturasProv, cxc, cxp, invCosto, invVenta,
           cobradoAnteriores, pendienteAnteriores, stockUnidades,
-          numClientes, ticketPedidos, ticketDetalle, vendedores,
+          numClientes, ticketPedidos, ticketDetalle, vendedores, detalleConBoleta, detalleSinBoleta,
         });
       } catch {}
       setLoading(false);
@@ -439,6 +442,8 @@ export default function ReportesPage() {
           <Fila k="Precio promedio por kilo (neto)" v={fmt(d?.precioPromKilo ?? 0)} />
           <Fila k="Ticket promedio — clientes (pedidos)" v={fmt(d?.ticketPedidos ?? 0)} color="#e53935" />
           <Fila k="Ticket promedio — al detalle" v={fmt(d?.ticketDetalle ?? 0)} color="#9c27b0" />
+          <Fila k="Detalle con boleta" v={fmt(d?.detalleConBoleta ?? 0)} color="#9c27b0" />
+          <Fila k="Detalle sin boleta" v={fmt(d?.detalleSinBoleta ?? 0)} color="#9ca3af" />
           <Fila k="Clientes registrados" v={`${(d?.numClientes ?? 0).toLocaleString('es-CL')}`} color="#2196f3" />
         </Seccion>
 

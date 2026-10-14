@@ -38,6 +38,7 @@ interface VentaDetalle {
   estado: string;
   vendedor: string | null;
   nombre_comprador: string | null;
+  con_boleta?: boolean;
   observaciones: string | null;
   items: { producto_id: string | null; nombre: string; cantidad: number; precio_unitario: number }[];
 }
@@ -86,6 +87,7 @@ export default function PedidosPage() {
   // Form detalle
   const [nombreComprador, setNombreComprador] = useState('');
   const [estadoDetalle, setEstadoDetalle] = useState<string>('pendiente');
+  const [conBoleta, setConBoleta] = useState(true);
   const [nombresGuardados, setNombresGuardados] = useState<string[]>([]);
   const [showListaComprador, setShowListaComprador] = useState(false);
   // Pendientes arrastrados de meses anteriores (no se pierden al cambiar de mes)
@@ -133,13 +135,13 @@ export default function PedidosPage() {
     try {
       const { data } = await supabase
         .from('ventas_detalle')
-        .select('id, fecha, total, estado, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto_id, producto:productos(nombre))')
+        .select('id, fecha, total, estado, vendedor, nombre_comprador, con_boleta, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto_id, producto:productos(nombre))')
         .gte('fecha', inicio)
         .lte('fecha', fin)
         .order('fecha', { ascending: false });
       if (data) {
         const mapped: VentaDetalle[] = (data as unknown as Array<{
-          id: string; fecha: string; total: number; estado: string; vendedor: string | null; nombre_comprador: string | null; observaciones: string | null;
+          id: string; fecha: string; total: number; estado: string; vendedor: string | null; nombre_comprador: string | null; con_boleta: boolean; observaciones: string | null;
           items: Array<{ cantidad: number; precio_unitario: number; producto_id: string | null; producto: { nombre: string } | null }>;
         }>).map((v) => ({
           id: v.id,
@@ -148,6 +150,7 @@ export default function PedidosPage() {
           estado: v.estado,
           vendedor: v.vendedor,
           nombre_comprador: v.nombre_comprador,
+          con_boleta: v.con_boleta,
           observaciones: v.observaciones,
           items: (v.items || []).map((i) => ({
             producto_id: i.producto_id,
@@ -169,16 +172,16 @@ export default function PedidosPage() {
           .select('*, cliente:clientes(nombre, rut), detalle:detalle_pedido(*, producto:productos(*))')
           .in('estado', ['pendiente', 'preparado', 'entregado']).lt('fecha', inicio).order('fecha', { ascending: true }),
         supabase.from('ventas_detalle')
-          .select('id, fecha, total, estado, vendedor, nombre_comprador, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto_id, producto:productos(nombre))')
+          .select('id, fecha, total, estado, vendedor, nombre_comprador, con_boleta, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto_id, producto:productos(nombre))')
           .in('estado', ['pendiente', 'preparado', 'entregado']).lt('fecha', inicio).order('fecha', { ascending: true }),
       ]);
       setArrastradosPed(pedR.data || []);
       const mappedDet: VentaDetalle[] = ((detR.data || []) as unknown as Array<{
-        id: string; fecha: string; total: number; estado: string; vendedor: string | null; nombre_comprador: string | null; observaciones: string | null;
+        id: string; fecha: string; total: number; estado: string; vendedor: string | null; nombre_comprador: string | null; con_boleta: boolean; observaciones: string | null;
         items: Array<{ cantidad: number; precio_unitario: number; producto_id: string | null; producto: { nombre: string } | null }>;
       }>).map((v) => ({
         id: v.id, fecha: v.fecha, total: v.total, estado: v.estado, vendedor: v.vendedor,
-        nombre_comprador: v.nombre_comprador, observaciones: v.observaciones,
+        nombre_comprador: v.nombre_comprador, con_boleta: v.con_boleta, observaciones: v.observaciones,
         items: (v.items || []).map((i) => ({ producto_id: i.producto_id, nombre: i.producto?.nombre ?? '—', cantidad: i.cantidad, precio_unitario: i.precio_unitario })),
       }));
       setArrastradosDet(mappedDet);
@@ -210,7 +213,7 @@ export default function PedidosPage() {
     setClienteId(''); setVendedor(''); setObservaciones('');
     setDireccion(''); setTelefono('');
     setFecha(new Date().toISOString().split('T')[0]);
-    setEventoId(''); setConIva(true); setNombreComprador(''); setEstadoDetalle('pendiente');
+    setEventoId(''); setConIva(true); setNombreComprador(''); setEstadoDetalle('pendiente'); setConBoleta(true);
     setShowModal(true);
   }
 
@@ -220,6 +223,7 @@ export default function PedidosPage() {
     setTipoModal('detalle');
     setFecha(v.fecha);
     setNombreComprador(v.nombre_comprador || '');
+    setConBoleta(v.con_boleta !== false);
     setVendedor(v.vendedor || '');
     setObservaciones(v.observaciones || '');
     setEstadoDetalle(v.estado);
@@ -393,7 +397,7 @@ export default function PedidosPage() {
         }
         const { error: ue } = await supabase.from('ventas_detalle').update({
           fecha, total: totalVenta, estado: estadoDetalle,
-          vendedor: vendedor || null, nombre_comprador: nombreComprador || null,
+          vendedor: vendedor || null, nombre_comprador: nombreComprador || null, con_boleta: conBoleta,
           observaciones: observaciones || null,
         }).eq('id', editandoDetalle.id);
         if (ue) throw new Error(ue.message);
@@ -417,6 +421,7 @@ export default function PedidosPage() {
             estado: estadoDetalle,
             vendedor: vendedor || null,
             nombre_comprador: nombreComprador || null,
+            con_boleta: conBoleta,
             observaciones: observaciones || null,
           })
           .select('id')
@@ -738,6 +743,10 @@ export default function PedidosPage() {
                       <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>
                         {v.nombre_comprador || new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-CL')}
                         {v.vendedor ? ` · ${v.vendedor}` : ''}
+                        <span className="ml-2 text-xs font-bold px-2 py-0.5 rounded-full"
+                          style={{ backgroundColor: v.con_boleta === false ? '#6b728030' : '#9c27b020', color: v.con_boleta === false ? '#9ca3af' : '#9c27b0' }}>
+                          {v.con_boleta === false ? '🚫 Sin boleta' : '🧾 Boleta'}
+                        </span>
                       </p>
                       <p className="text-xs" style={{ color: '#6b7280' }}>
                         {new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-CL')}
@@ -1240,9 +1249,18 @@ export default function PedidosPage() {
                   </div>
                 ))}
 
-                <div className="flex items-center gap-2 p-3 rounded-lg border mb-3" style={{ backgroundColor: '#9c27b010', borderColor: '#9c27b0' + '40' }}>
-                  <span className="text-sm">🧾</span>
-                  <span className="text-sm" style={{ color: '#9ca3af' }}>Documento: <span className="font-bold" style={{ color: '#9c27b0' }}>Boleta</span></span>
+                <label className="block text-xs font-semibold uppercase mb-2" style={{ color: '#6b7280' }}>Documento</label>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <button type="button" onClick={() => setConBoleta(true)}
+                    className="py-2 rounded-lg border text-sm font-semibold"
+                    style={{ backgroundColor: conBoleta ? '#9c27b020' : 'transparent', borderColor: conBoleta ? '#9c27b0' : '#2a2a2a', color: conBoleta ? '#9c27b0' : '#6b7280' }}>
+                    🧾 Con boleta
+                  </button>
+                  <button type="button" onClick={() => setConBoleta(false)}
+                    className="py-2 rounded-lg border text-sm font-semibold"
+                    style={{ backgroundColor: !conBoleta ? '#6b728020' : 'transparent', borderColor: !conBoleta ? '#9ca3af' : '#2a2a2a', color: !conBoleta ? '#9ca3af' : '#6b7280' }}>
+                    🚫 Sin boleta
+                  </button>
                 </div>
 
                 {items.length > 0 && (
@@ -1251,9 +1269,15 @@ export default function PedidosPage() {
                       <span style={{ color: '#6b7280' }}>TOTAL</span>
                       <span className="text-xl" style={{ color: '#9c27b0' }}>{fmt(neto)}</span>
                     </div>
-                    <div className="flex justify-between text-xs mb-0.5"><span style={{ color: '#6b7280' }}>Neto</span><span style={{ color: '#9ca3af' }}>{fmt(Math.round(neto / 1.19))}</span></div>
-                    <div className="flex justify-between text-xs"><span style={{ color: '#6b7280' }}>IVA 19%</span><span style={{ color: '#9ca3af' }}>{fmt(neto - Math.round(neto / 1.19))}</span></div>
-                    <p className="text-xs mt-2" style={{ color: '#6b7280' }}>El precio de la boleta ya incluye el impuesto</p>
+                    {conBoleta ? (
+                      <>
+                        <div className="flex justify-between text-xs mb-0.5"><span style={{ color: '#6b7280' }}>Neto</span><span style={{ color: '#9ca3af' }}>{fmt(Math.round(neto / 1.19))}</span></div>
+                        <div className="flex justify-between text-xs"><span style={{ color: '#6b7280' }}>IVA 19%</span><span style={{ color: '#9ca3af' }}>{fmt(neto - Math.round(neto / 1.19))}</span></div>
+                        <p className="text-xs mt-2" style={{ color: '#6b7280' }}>El precio de la boleta ya incluye el impuesto</p>
+                      </>
+                    ) : (
+                      <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Venta sin boleta — no genera IVA</p>
+                    )}
                   </div>
                 )}
 
