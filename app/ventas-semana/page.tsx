@@ -144,6 +144,25 @@ export default function VentasSemanaPage() {
   const totalMes = ventasMes.reduce((s, v) => s + v.total, 0);
   const unidadesMes = ventasMes.reduce((s, v) => s + v.unidades, 0);
   const [anioMS, mesMS] = mesSel.split('-').map(Number);
+
+  // Semanas del mes seleccionado (lunes a domingo, solo los días que caen en el mes)
+  const semanasDelMes = (() => {
+    const ultimo = new Date(anioMS, mesMS, 0).getDate();
+    const grupos: Record<string, { diaIni: number; diaFin: number; total: number; unidades: number }> = {};
+    for (let dia = 1; dia <= ultimo; dia++) {
+      const lk = iso(lunesDe(new Date(anioMS, mesMS - 1, dia)));
+      if (!grupos[lk]) grupos[lk] = { diaIni: dia, diaFin: dia, total: 0, unidades: 0 };
+      grupos[lk].diaFin = dia;
+    }
+    for (const v of ventasMes) {
+      const lk = iso(lunesDe(new Date(v.fecha + 'T12:00:00')));
+      if (grupos[lk]) { grupos[lk].total += v.total; grupos[lk].unidades += v.unidades; }
+    }
+    return Object.entries(grupos)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, g], i) => ({ key, n: i + 1, ...g }));
+  })();
+  const maxSemMes = Math.max(...semanasDelMes.map((s) => s.total), 1);
   const idxMesSel = meses.findIndex((m) => m.key === mesSel);
   const mesAnterior = idxMesSel >= 0 && idxMesSel < meses.length - 1 ? meses[idxMesSel + 1].total : 0;
   const vsMesAnt = mesAnterior > 0 ? Math.round((totalMes - mesAnterior) / mesAnterior * 100) : null;
@@ -245,6 +264,34 @@ export default function VentasSemanaPage() {
 
           {/* Por tipo */}
           <PorTipo lista={porTipoDe(ventasMes, totalMes)} vacio="No hubo ventas este mes" />
+
+          {/* Ventas del mes por semana */}
+          <div className="rounded-xl border overflow-hidden mt-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+            <div className="px-4 py-3 border-b" style={{ borderColor: '#2a2a2a' }}>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#6b7280' }}>
+                🗓️ Ventas de {MESES[(mesMS || 1) - 1]} por semana
+              </p>
+            </div>
+            {semanasDelMes.map((s, i) => (
+              <button key={s.key} onClick={() => { setSemanaSel(s.key); setVista('semanal'); }}
+                className="w-full text-left px-4 py-3"
+                style={{ borderBottom: i < semanasDelMes.length - 1 ? '1px solid #2a2a2a' : 'none' }}>
+                <div className="flex justify-between items-center mb-1.5">
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: '#f5f5f5' }}>Semana {s.n}</p>
+                    <p className="text-xs" style={{ color: '#6b7280' }}>
+                      {s.diaIni} – {s.diaFin} de {MESES[(mesMS || 1) - 1]} · {s.unidades.toLocaleString('es-CL')} paq.
+                    </p>
+                  </div>
+                  <p className="font-extrabold" style={{ color: s.total > 0 ? '#2196f3' : '#6b7280' }}>{fmt(s.total)}</p>
+                </div>
+                <div className="w-full rounded-full h-2" style={{ backgroundColor: '#2a2a2a' }}>
+                  <div className="h-2 rounded-full" style={{ width: `${Math.round(s.total / maxSemMes * 100)}%`, backgroundColor: '#2196f3' }} />
+                </div>
+              </button>
+            ))}
+            <p className="text-xs text-center py-2" style={{ color: '#6b7280' }}>Toca una semana para verla en detalle</p>
+          </div>
 
           {/* Gráficos de torta del mes */}
           <div className="space-y-3 mt-4">
