@@ -55,6 +55,7 @@ interface Reporte {
   stockUnidades: number;
   numClientes: number; ticketPedidos: number; ticketDetalle: number;
   detalleConBoleta: number; detalleSinBoleta: number;
+  serie: { mes: number; ventas: number; costos: number; gastos: number; utilidad: number }[];
   vendedores: { nombre: string; ventas: number; comision: number }[];
 }
 
@@ -270,6 +271,27 @@ export default function ReportesPage() {
           ((detW.data || []) as any[]).filter((r) => r.fecha >= inicioAnio && !sinComision(r.nombre_comprador)).reduce((s, r) => s + r.total * 0.05, 0)
         );
 
+        // ---- Serie mensual del año (para el gráfico de líneas) ----
+        const serie: { mes: number; ventas: number; costos: number; gastos: number; utilidad: number }[] = [];
+        const hastaMes = anioFiltro === hoyDate.getFullYear() ? hoyDate.getMonth() : 11;
+        for (let m = 0; m <= hastaMes; m++) {
+          const pref = `${anioFiltro}-${String(m + 1).padStart(2, '0')}`;
+          const sumaF = (rows: any[] | null | undefined) => (rows || []).filter((r) => (r.fecha || '').startsWith(pref)).reduce((a, r) => a + r.total, 0);
+          const ventasM = sumaF(pedW.data as any[]) + sumaF(detW.data as any[]) + sumaF(eveW.data as any[]) + sumaF(mayW.data as any[]);
+          const facturasM = ((costW.data || []) as any[]).filter((c) => (c.created_at || '').startsWith(pref)).reduce((a, c) => a + c.monto, 0);
+          const comM = Math.round(
+            ((pedW.data || []) as any[]).filter((r) => (r.fecha || '').startsWith(pref) && !sinComision(r.cliente?.nombre)).reduce((a, r) => a + r.total * 0.05, 0) +
+            ((detW.data || []) as any[]).filter((r) => (r.fecha || '').startsWith(pref) && !sinComision(r.nombre_comprador)).reduce((a, r) => a + r.total * 0.05, 0)
+          );
+          const dm = filasAnio.find((f) => f.mes === m)?.datos ?? {};
+          const fijosM = GASTOS_FIJOS.reduce((a, [k]) => a + (dm[k] || 0), 0);
+          const opM = gastosOpFilas.filter((g) => g.mes === m).reduce((a, g) => a + g.monto, 0);
+          const costoM = (dm.costo_ventas || 0) > 0 ? dm.costo_ventas : facturasM;
+          const gastosM = comM + fijosM + opM;
+          const netaM = neto(ventasM);
+          serie.push({ mes: m, ventas: netaM, costos: costoM, gastos: gastosM, utilidad: netaM - costoM - gastosM + (dm.otros_ingresos || 0) });
+        }
+
         // ---- Situación ----
         const cxc = ((pedCxc.data || []) as any[]).reduce((s, p) => s + p.total, 0) + ((detCxc.data || []) as any[]).reduce((s, v) => s + v.total, 0);
         const cxp = ((costCxp.data || []) as any[]).reduce((s, f) => s + f.monto, 0);
@@ -285,7 +307,7 @@ export default function ReportesPage() {
           unidades, unidadesPedidos, unidadesDetalle, unidadesEventos, kilos, precioProm, precioPromKilo, porProducto, porCanal, topClientes,
           cogsEstimado, costoUnitProm, facturasProv, cxc, cxp, invCosto, invVenta,
           cobradoAnteriores, pendienteAnteriores, stockUnidades,
-          numClientes, ticketPedidos, ticketDetalle, vendedores, detalleConBoleta, detalleSinBoleta,
+          numClientes, ticketPedidos, ticketDetalle, vendedores, detalleConBoleta, detalleSinBoleta, serie,
         });
       } catch {}
       setLoading(false);
@@ -426,6 +448,63 @@ export default function ReportesPage() {
             <Card label="Stock del mes" value="—" color="#6b7280" sub="Sin registro (guarda los datos ese mes)" />
           )}
         </div>
+
+        {/* Gráfico de líneas: utilidad mes a mes */}
+        <Seccion titulo={`📈 Utilidad mes a mes — ${anioFiltro}`}>
+          {(() => {
+            const serie = d?.serie ?? [];
+            if (serie.length === 0) return <p className="text-sm" style={{ color: '#6b7280' }}>Sin datos</p>;
+            const W = 360, H = 150, PL = 44, PR = 8, PT = 12, PB = 22;
+            const vals = serie.map((x) => x.utilidad);
+            const maxV = Math.max(...vals, 0), minV = Math.min(...vals, 0);
+            const rango = maxV - minV || 1;
+            const x = (i: number) => PL + (serie.length === 1 ? (W - PL - PR) / 2 : (i * (W - PL - PR)) / (serie.length - 1));
+            const y = (v: number) => PT + ((maxV - v) / rango) * (H - PT - PB);
+            const yCero = y(0);
+            const puntos = serie.map((p, i) => `${x(i)},${y(p.utilidad)}`).join(' ');
+            const positivos = serie.filter((p) => p.utilidad >= 0).length;
+            const kFmt = (v: number) => Math.abs(v) >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : `${Math.round(v / 1000)}k`;
+            return (
+              <>
+                <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+                  {/* línea de cero */}
+                  <line x1={PL} y1={yCero} x2={W - PR} y2={yCero} stroke="#6b7280" strokeWidth={1} strokeDasharray="4 3" />
+                  <text x={PL - 6} y={yCero + 3} textAnchor="end" fontSize={8} fill="#6b7280" style={{ fontFamily: 'system-ui' }}>0</text>
+                  {/* máximo y mínimo */}
+                  <text x={PL - 6} y={y(maxV) + 3} textAnchor="end" fontSize={8} fill="#6b7280" style={{ fontFamily: 'system-ui' }}>{kFmt(maxV)}</text>
+                  {minV < 0 && <text x={PL - 6} y={y(minV) + 3} textAnchor="end" fontSize={8} fill="#6b7280" style={{ fontFamily: 'system-ui' }}>{kFmt(minV)}</text>}
+                  {/* línea de utilidad */}
+                  <polyline points={puntos} fill="none" stroke="#2196f3" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                  {/* puntos y etiquetas */}
+                  {serie.map((p, i) => {
+                    const col = p.utilidad >= 0 ? '#4caf50' : '#e53935';
+                    const arriba = p.utilidad >= 0;
+                    return (
+                      <g key={p.mes}>
+                        <circle cx={x(i)} cy={y(p.utilidad)} r={3.5} fill={col} />
+                        <text x={x(i)} y={y(p.utilidad) + (arriba ? -7 : 12)} textAnchor="middle" fontSize={7.5} fill={col} style={{ fontFamily: 'system-ui' }}>
+                          {kFmt(p.utilidad)}
+                        </text>
+                        <text x={x(i)} y={H - 6} textAnchor="middle" fontSize={8}
+                          fontWeight={p.mes === mesFiltro ? 'bold' : 'normal'}
+                          fill={p.mes === mesFiltro ? '#f5f5f5' : '#6b7280'} style={{ fontFamily: 'system-ui' }}>
+                          {MESES[p.mes].slice(0, 3)}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+                <p className="text-xs mt-2" style={{ color: '#6b7280' }}>
+                  <span style={{ color: '#4caf50' }}>●</span> {positivos} mes{positivos !== 1 ? 'es' : ''} en positivo ·{' '}
+                  <span style={{ color: '#e53935' }}>●</span> {serie.length - positivos} en negativo ·{' '}
+                  Acumulado del año: <span style={{ color: serie.reduce((s, p) => s + p.utilidad, 0) >= 0 ? '#4caf50' : '#e53935', fontWeight: 700 }}>
+                    {fmt(serie.reduce((s, p) => s + p.utilidad, 0))}
+                  </span>
+                </p>
+              </>
+            );
+          })()}
+        </Seccion>
 
         {modo === 'ampliado' && (<>
         {/* 2. Ventas */}
