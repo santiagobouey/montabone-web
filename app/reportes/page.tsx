@@ -54,6 +54,7 @@ interface Reporte {
   cobradoAnteriores: number; pendienteAnteriores: number;
   stockUnidades: number;
   numClientes: number; ticketPedidos: number; ticketDetalle: number;
+  vendedores: { nombre: string; ventas: number; comision: number }[];
 }
 
 export default function ReportesPage() {
@@ -117,8 +118,8 @@ export default function ReportesPage() {
           pedCxc, detCxc, costCxp, datosAnioRes,
           pedCobAnt, detCobAnt, pedPendAnt, detPendAnt, gastosOpRes,
         ] = await Promise.all([
-          supabase.from('pedidos').select('cliente_id, total, estado, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
-          supabase.from('ventas_detalle').select('total, nombre_comprador, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
+          supabase.from('pedidos').select('cliente_id, total, estado, vendedor, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
+          supabase.from('ventas_detalle').select('total, nombre_comprador, vendedor, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
           supabase.from('ventas_evento').select('total, cantidad, producto:productos(nombre, costo)').gte('fecha', inicio).lte('fecha', fin),
           supabase.from('ventas_mayor').select('total, costo, cliente:clientes(nombre), items:items_venta_mayor(kilos, subtotal)').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
           supabase.from('clientes').select('id, nombre, tipo'),
@@ -230,6 +231,19 @@ export default function ReportesPage() {
         const comisiones =
           ((pedM.data || []) as any[]).filter((p) => !sinComision(cliMap.get(p.cliente_id)?.nombre)).reduce((s, p) => s + Math.round(p.total * 0.05), 0) +
           ((detM.data || []) as any[]).filter((v) => !sinComision(v.nombre_comprador)).reduce((s, v) => s + Math.round(v.total * 0.05), 0);
+        // Ventas y comisión por vendedor
+        const vendMap: Record<string, { ventas: number; comision: number }> = {};
+        const acumVend = (vendedor: string | null, total: number, comisiona: boolean) => {
+          const v = (vendedor || '').trim();
+          if (!v) return;
+          if (!vendMap[v]) vendMap[v] = { ventas: 0, comision: 0 };
+          vendMap[v].ventas += total;
+          if (comisiona) vendMap[v].comision += Math.round(total * 0.05);
+        };
+        for (const p of (pedM.data || []) as any[]) acumVend(p.vendedor, p.total, !sinComision(cliMap.get(p.cliente_id)?.nombre));
+        for (const v of (detM.data || []) as any[]) acumVend(v.vendedor, v.total, !sinComision(v.nombre_comprador));
+        const vendedores = Object.entries(vendMap).map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.ventas - a.ventas);
+
         const gastosOper = comisiones + gastosEventos;
         const costoVentas = facturasProv;
         const margenBruto = ventasNetas - costoVentas;
@@ -268,7 +282,7 @@ export default function ReportesPage() {
           unidades, unidadesPedidos, unidadesDetalle, unidadesEventos, kilos, precioProm, precioPromKilo, porProducto, porCanal, topClientes,
           cogsEstimado, costoUnitProm, facturasProv, cxc, cxp, invCosto, invVenta,
           cobradoAnteriores, pendienteAnteriores, stockUnidades,
-          numClientes, ticketPedidos, ticketDetalle,
+          numClientes, ticketPedidos, ticketDetalle, vendedores,
         });
       } catch {}
       setLoading(false);
@@ -509,6 +523,32 @@ export default function ReportesPage() {
         </Seccion>
 
         </>)}
+
+        {/* Vendedores del mes */}
+        <Seccion titulo={`🧑‍💼 Vendedores — ${MESES[mesFiltro]}`}>
+          {(d?.vendedores ?? []).length === 0 ? (
+            <p className="text-sm" style={{ color: '#6b7280' }}>Sin ventas con vendedor asignado este mes</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 text-sm">
+                <span className="font-bold py-1" style={{ color: '#6b7280' }}>Vendedor</span>
+                <span className="font-bold py-1 text-right" style={{ color: '#6b7280' }}>Vendido</span>
+                <span className="font-bold py-1 text-right" style={{ color: '#6b7280' }}>Comisión</span>
+                {(d?.vendedores ?? []).map((v) => (
+                  <div key={v.nombre} className="contents">
+                    <span className="py-1.5 border-t" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>{v.nombre}</span>
+                    <span className="py-1.5 border-t text-right font-semibold" style={{ borderColor: '#2a2a2a', color: '#4caf50' }}>{fmt(v.ventas)}</span>
+                    <span className="py-1.5 border-t text-right font-semibold" style={{ borderColor: '#2a2a2a', color: '#ff9800' }}>{fmt(v.comision)}</span>
+                  </div>
+                ))}
+                <span className="py-1.5 border-t font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>Total</span>
+                <span className="py-1.5 border-t text-right font-extrabold" style={{ borderColor: '#2a2a2a', color: '#4caf50' }}>{fmt((d?.vendedores ?? []).reduce((s, v) => s + v.ventas, 0))}</span>
+                <span className="py-1.5 border-t text-right font-extrabold" style={{ borderColor: '#2a2a2a', color: '#ff9800' }}>{fmt((d?.vendedores ?? []).reduce((s, v) => s + v.comision, 0))}</span>
+              </div>
+              <p className="text-xs mt-2" style={{ color: '#6b7280' }}>Comisión 5%. No se comisionan las ventas al cliente Kao ni las compras de Santiago Bouey y Hernán Torres.</p>
+            </>
+          )}
+        </Seccion>
 
         {/* 5. Estado de resultados */}
         <Seccion titulo="5 · Estado de resultados">
