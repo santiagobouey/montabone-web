@@ -74,6 +74,7 @@ export default function PedidosPage() {
   const [conIva, setConIva] = useState(true);
   const [verVentasDetalle, setVerVentasDetalle] = useState(false);
   const [pedidoAEliminar, setPedidoAEliminar] = useState<Pedido | null>(null);
+  const [detalleAEliminar, setDetalleAEliminar] = useState<VentaDetalle | null>(null);
 
   // Form pedido
   const [clienteId, setClienteId] = useState('');
@@ -556,6 +557,20 @@ export default function PedidosPage() {
     if (prods) { setTodosProductos(prods); setProductos(prods); }
   }
 
+  // Anular una venta al detalle: devuelve el stock si ya lo había descontado
+  async function eliminarDetalle(v: VentaDetalle) {
+    if (CONSUMEN_STOCK.includes(v.estado)) {
+      await ajustarStock((v.items || []).map((i) => ({ id: i.producto_id ?? undefined, cantidad: i.cantidad })), +1);
+    }
+    await supabase.from('items_venta_detalle').delete().eq('venta_id', v.id);
+    await supabase.from('ventas_detalle').delete().eq('id', v.id);
+    setDetalleAEliminar(null);
+    await fetchVentasDetalle(inicioMes, finMes);
+    await fetchArrastrados(inicioMes);
+    const { data: prods } = await supabase.from('productos').select('*').order('nombre');
+    if (prods) { setTodosProductos(prods); setProductos(prods); }
+  }
+
   async function eliminarPedido(p: Pedido) {
     // Solo devolver stock si el pedido ya lo había descontado (entregado/pagado)
     if (CONSUMEN_STOCK.includes(p.estado)) {
@@ -643,7 +658,11 @@ export default function PedidosPage() {
                     {new Date(v.fecha + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })} · {fmt(v.total)}
                   </p>
                 </div>
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full border flex-shrink-0" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>{v.estado.toUpperCase()}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => abrirEditarDetalle(v)} className="w-7 h-7 rounded-lg flex items-center justify-center border text-sm" style={{ borderColor: '#2a2a2a', backgroundColor: '#1c1c1c' }}>✏️</button>
+                  <button onClick={() => setDetalleAEliminar(v)} className="w-7 h-7 rounded-lg flex items-center justify-center border text-sm" style={{ borderColor: '#e5393520', backgroundColor: '#e5393510' }}>🗑️</button>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full border" style={{ color, backgroundColor: color + '20', borderColor: color + '40' }}>{v.estado.toUpperCase()}</span>
+                </div>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {ESTADOS.filter((e) => e !== v.estado).map((e) => (
@@ -777,6 +796,11 @@ export default function PedidosPage() {
                       className="text-xs px-2 py-1 rounded border"
                       style={{ borderColor: '#2a2a2a', color: '#9ca3af', backgroundColor: '#1c1c1c' }}>
                       ✏️ Editar
+                    </button>
+                    <button onClick={() => setDetalleAEliminar(v)}
+                      className="text-xs px-2 py-1 rounded border"
+                      style={{ borderColor: '#e5393560', color: '#e53935', backgroundColor: '#e5393510' }}>
+                      🗑️ Anular
                     </button>
                     {ESTADOS.filter((e) => e !== v.estado).map((e) => (
                       <button key={e} onClick={() => cambiarEstadoDetalle(v.id, e)}
@@ -1306,6 +1330,39 @@ export default function PedidosPage() {
                 </button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmar anulación de venta al detalle */}
+      {detalleAEliminar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: '#141414' }}>
+            <p className="text-lg font-bold mb-1" style={{ color: '#f5f5f5' }}>¿Anular venta al detalle?</p>
+            <p className="text-sm mb-1" style={{ color: '#6b7280' }}>
+              Comprador: <strong style={{ color: '#f5f5f5' }}>{detalleAEliminar.nombre_comprador || 'Sin nombre'}</strong>
+            </p>
+            <p className="text-sm mb-1" style={{ color: '#6b7280' }}>
+              Fecha: <strong style={{ color: '#f5f5f5' }}>{new Date(detalleAEliminar.fecha + 'T12:00:00').toLocaleDateString('es-CL')}</strong>
+            </p>
+            <p className="text-sm mb-4" style={{ color: '#6b7280' }}>
+              Total: <strong style={{ color: '#f5f5f5' }}>{fmt(detalleAEliminar.total)}</strong>
+            </p>
+            <p className="text-xs mb-4 p-3 rounded-lg" style={{ backgroundColor: '#e5393515', color: '#e53935' }}>
+              ⚠️ Esta acción no se puede deshacer.{CONSUMEN_STOCK.includes(detalleAEliminar.estado) ? ' El stock será devuelto automáticamente.' : ''}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setDetalleAEliminar(null)}
+                className="flex-1 py-3 rounded-lg font-bold text-sm border"
+                style={{ borderColor: '#2a2a2a', color: '#9ca3af', backgroundColor: '#1c1c1c' }}>
+                Cancelar
+              </button>
+              <button onClick={() => eliminarDetalle(detalleAEliminar)}
+                className="flex-1 py-3 rounded-lg font-bold text-sm text-white"
+                style={{ backgroundColor: '#e53935' }}>
+                Sí, anular
+              </button>
+            </div>
           </div>
         </div>
       )}
