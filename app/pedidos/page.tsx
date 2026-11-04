@@ -559,16 +559,27 @@ export default function PedidosPage() {
 
   // Anular una venta al detalle: devuelve el stock si ya lo había descontado
   async function eliminarDetalle(v: VentaDetalle) {
-    if (CONSUMEN_STOCK.includes(v.estado)) {
-      await ajustarStock((v.items || []).map((i) => ({ id: i.producto_id ?? undefined, cantidad: i.cantidad })), +1);
+    try {
+      if (!v.id) throw new Error('La venta no tiene id');
+      if (CONSUMEN_STOCK.includes(v.estado)) {
+        await ajustarStock((v.items || []).map((i) => ({ id: i.producto_id ?? undefined, cantidad: i.cantidad })), +1);
+      }
+      const { error: eItems } = await supabase.from('items_venta_detalle').delete().eq('venta_id', v.id);
+      if (eItems) throw new Error('No se pudieron borrar los productos: ' + eItems.message);
+
+      const { error: eVenta, count } = await supabase
+        .from('ventas_detalle').delete({ count: 'exact' }).eq('id', v.id);
+      if (eVenta) throw new Error(eVenta.message);
+      if (!count) throw new Error('La venta no se borró (puede estar protegida en la base de datos)');
+
+      setDetalleAEliminar(null);
+      await fetchVentasDetalle(inicioMes, finMes);
+      await fetchArrastrados(inicioMes);
+      const { data: prods } = await supabase.from('productos').select('*').order('nombre');
+      if (prods) { setTodosProductos(prods); setProductos(prods); }
+    } catch (e: unknown) {
+      alert('No se pudo anular: ' + (e instanceof Error ? e.message : 'error desconocido'));
     }
-    await supabase.from('items_venta_detalle').delete().eq('venta_id', v.id);
-    await supabase.from('ventas_detalle').delete().eq('id', v.id);
-    setDetalleAEliminar(null);
-    await fetchVentasDetalle(inicioMes, finMes);
-    await fetchArrastrados(inicioMes);
-    const { data: prods } = await supabase.from('productos').select('*').order('nombre');
-    if (prods) { setTodosProductos(prods); setProductos(prods); }
   }
 
   async function eliminarPedido(p: Pedido) {
