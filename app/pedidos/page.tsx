@@ -75,6 +75,7 @@ export default function PedidosPage() {
   const [verVentasDetalle, setVerVentasDetalle] = useState(false);
   const [pedidoAEliminar, setPedidoAEliminar] = useState<Pedido | null>(null);
   const [detalleAEliminar, setDetalleAEliminar] = useState<VentaDetalle | null>(null);
+  const [anulando, setAnulando] = useState(false);
 
   // Form pedido
   const [clienteId, setClienteId] = useState('');
@@ -559,18 +560,33 @@ export default function PedidosPage() {
 
   // Anular una venta al detalle: devuelve el stock si ya lo había descontado
   async function eliminarDetalle(v: VentaDetalle) {
+    if (anulando) return;
+    setAnulando(true);
     try {
       if (!v.id) throw new Error('La venta no tiene id');
-      if (CONSUMEN_STOCK.includes(v.estado)) {
-        await ajustarStock((v.items || []).map((i) => ({ id: i.producto_id ?? undefined, cantidad: i.cantidad })), +1);
-      }
+
+      // 1. Borrar los productos de la venta
       const { error: eItems } = await supabase.from('items_venta_detalle').delete().eq('venta_id', v.id);
       if (eItems) throw new Error('No se pudieron borrar los productos: ' + eItems.message);
 
-      const { error: eVenta, count } = await supabase
-        .from('ventas_detalle').delete({ count: 'exact' }).eq('id', v.id);
+      // 2. Borrar la venta. Pedimos de vuelta lo borrado con .select() en vez de
+      //    contar filas: el conteo viaja en una cabecera que el navegador no
+      //    siempre puede leer, y daba un falso error aunque la venta sí se borraba.
+      const { data: borradas, error: eVenta } = await supabase
+        .from('ventas_detalle').delete().eq('id', v.id).select('id');
       if (eVenta) throw new Error(eVenta.message);
-      if (!count) throw new Error('La venta no se borró (puede estar protegida en la base de datos)');
+
+      // 3. Si no devolvió nada, confirmar contra la base antes de dar error
+      if (!borradas || borradas.length === 0) {
+        const { data: sigueAhi } = await supabase
+          .from('ventas_detalle').select('id').eq('id', v.id).maybeSingle();
+        if (sigueAhi) throw new Error('La venta sigue en la base de datos. Avísame y reviso los permisos.');
+      }
+
+      // 4. Devolver el stock solo si la venta ya lo había descontado
+      if (CONSUMEN_STOCK.includes(v.estado)) {
+        await ajustarStock((v.items || []).map((i) => ({ id: i.producto_id ?? undefined, cantidad: i.cantidad })), +1);
+      }
 
       setDetalleAEliminar(null);
       await fetchVentasDetalle(inicioMes, finMes);
@@ -579,6 +595,8 @@ export default function PedidosPage() {
       if (prods) { setTodosProductos(prods); setProductos(prods); }
     } catch (e: unknown) {
       alert('No se pudo anular: ' + (e instanceof Error ? e.message : 'error desconocido'));
+    } finally {
+      setAnulando(false);
     }
   }
 
@@ -1363,15 +1381,15 @@ export default function PedidosPage() {
               ⚠️ Esta acción no se puede deshacer.{CONSUMEN_STOCK.includes(detalleAEliminar.estado) ? ' El stock será devuelto automáticamente.' : ''}
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setDetalleAEliminar(null)}
-                className="flex-1 py-3 rounded-lg font-bold text-sm border"
+              <button onClick={() => setDetalleAEliminar(null)} disabled={anulando}
+                className="flex-1 py-3 rounded-lg font-bold text-sm border disabled:opacity-40"
                 style={{ borderColor: '#2a2a2a', color: '#9ca3af', backgroundColor: '#1c1c1c' }}>
                 Cancelar
               </button>
-              <button onClick={() => eliminarDetalle(detalleAEliminar)}
-                className="flex-1 py-3 rounded-lg font-bold text-sm text-white"
+              <button onClick={() => eliminarDetalle(detalleAEliminar)} disabled={anulando}
+                className="flex-1 py-3 rounded-lg font-bold text-sm text-white disabled:opacity-60"
                 style={{ backgroundColor: '#e53935' }}>
-                Sí, anular
+                {anulando ? 'Anulando...' : 'Sí, anular'}
               </button>
             </div>
           </div>
