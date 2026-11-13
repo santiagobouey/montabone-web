@@ -368,6 +368,14 @@ export default function DashboardPage() {
               <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>📦 Valor stock actual</p>
               <p className="text-base md:text-xl font-extrabold leading-tight tracking-tight whitespace-nowrap" style={{ color: '#2196f3' }}>{fmt(valorStock)}</p>
               <p className="text-[10px] md:text-xs mt-1" style={{ color: '#6b7280' }}>{(stats?.paquetesStock ?? 0).toLocaleString('es-CL')} paquetes</p>
+              {(() => {
+                const cong = productos.reduce((s, p) => s + (p.stock_congelado ?? 0), 0);
+                return cong > 0 ? (
+                  <p className="text-[10px] md:text-xs mt-0.5 font-semibold" style={{ color: '#00bcd4' }}>
+                    🧊 + {cong.toLocaleString('es-CL')} congelados aparte
+                  </p>
+                ) : null;
+              })()}
             </Link>
             <Link href="/periodos" className="rounded-xl border p-4 md:p-5 block transition-colors hover:brightness-125" style={{ backgroundColor: '#141414', borderColor: '#ff9800' + '60', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
               <p className="text-[10px] md:text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>🎯 Utilidad mín. esperada</p>

@@ -18,7 +18,7 @@ export default function RespaldoPage() {
         facturasRes, costosRes, mermasRes, prospectosRes, periodosRes,
       ] = await Promise.all([
         supabase.from('clientes').select('nombre, razon_social, rut, giro, direccion, telefono, email, nombre_contacto, tipo').order('nombre'),
-        supabase.from('productos').select('nombre, formato, stock, precio, costo, fecha_ingreso, fecha_vencimiento').order('nombre'),
+        supabase.from('productos').select('nombre, formato, stock, stock_congelado, precio, costo, fecha_ingreso, fecha_vencimiento').order('nombre'),
         supabase.from('pedidos').select('fecha, estado, total, vendedor, cliente:clientes(nombre), detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre))').order('fecha', { ascending: false }),
         supabase.from('ventas_detalle').select('fecha, estado, total, nombre_comprador, vendedor, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre))').order('fecha', { ascending: false }),
         supabase.from('ventas_evento').select('cantidad, precio_unitario, total, fecha, evento_nombre, producto:productos(nombre)'),

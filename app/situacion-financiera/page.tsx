@@ -26,6 +26,10 @@ export default function SituacionFinancieraPage() {
   const [invCosto, setInvCosto] = useState(0);
   const [invVenta, setInvVenta] = useState(0);
   const [paquetes, setPaquetes] = useState(0);
+  // Congelados: se contabilizan aparte del stock normal
+  const [congCosto, setCongCosto] = useState(0);
+  const [congVenta, setCongVenta] = useState(0);
+  const [congPaquetes, setCongPaquetes] = useState(0);
   const [manual, setManual] = useState<Record<string, string>>({});
   const [datosBase, setDatosBase] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
@@ -40,7 +44,7 @@ export default function SituacionFinancieraPage() {
       supabase.from('pedidos').select('total').eq('estado', 'entregado'),
       supabase.from('ventas_detalle').select('total').eq('estado', 'entregado'),
       supabase.from('costos_factura').select('monto').eq('pagada', false),
-      supabase.from('productos').select('stock, costo, precio'),
+      supabase.from('productos').select('stock, stock_congelado, costo, precio'),
       supabase.from('datos_mensuales').select('datos').eq('anio', anio).eq('mes', mes).maybeSingle(),
     ]);
     const c = ((pedRes.data || []) as any[]).reduce((s, p) => s + p.total, 0);
@@ -51,6 +55,9 @@ export default function SituacionFinancieraPage() {
     setInvCosto(prods.reduce((s, p) => s + (p.stock || 0) * (p.costo || 0), 0));
     setInvVenta(prods.reduce((s, p) => s + (p.stock || 0) * (p.precio || 0), 0));
     setPaquetes(prods.reduce((s, p) => s + (p.stock || 0), 0));
+    setCongCosto(prods.reduce((s, p) => s + (p.stock_congelado || 0) * (p.costo || 0), 0));
+    setCongVenta(prods.reduce((s, p) => s + (p.stock_congelado || 0) * (p.precio || 0), 0));
+    setCongPaquetes(prods.reduce((s, p) => s + (p.stock_congelado || 0), 0));
     const datos = ((datosRes.data as any)?.datos ?? {}) as Record<string, number>;
     setDatosBase(datos);
     const str: Record<string, string> = {};
@@ -78,7 +85,7 @@ export default function SituacionFinancieraPage() {
   const creditos = numOf(manual, 'creditos');
   const cuotas = numOf(manual, 'cuotas');
 
-  const totalActivos = efectivo + bancos + cxc + invCosto;
+  const totalActivos = efectivo + bancos + cxc + invCosto + congCosto;
   const totalPasivos = cxp + creditos + cuotas;
   const patrimonio = totalActivos - totalPasivos;
   const capitalTrabajo = totalActivos - totalPasivos;
@@ -163,6 +170,10 @@ export default function SituacionFinancieraPage() {
           ))}
           <Fila k="📨 Cuentas por cobrar" v={fmt(cxc)} color="#ff9800" sub={`Clientes ${fmt(cxcClientes)} · Detalle ${fmt(cxcDetalle)}`} />
           <Fila k="📦 Inventario (a costo)" v={fmt(invCosto)} color="#2196f3" sub={`${paquetes.toLocaleString('es-CL')} paquetes · valen ${fmt(invVenta)} a precio de venta`} />
+          {congPaquetes > 0 && (
+            <Fila k="🧊 Inventario congelado (a costo)" v={fmt(congCosto)} color="#00bcd4"
+              sub={`${congPaquetes.toLocaleString('es-CL')} paquetes · valen ${fmt(congVenta)} a precio de venta · contabilidad aparte`} />
+          )}
           <Fila k="Total activos" v={fmt(totalActivos)} color="#4caf50" bold />
         </Seccion>
 
@@ -193,8 +204,10 @@ export default function SituacionFinancieraPage() {
           <Fila k="🧮 Razón corriente" v={razonCorriente === null ? '—' : razonCorriente.toFixed(2)}
             color={razonCorriente === null ? '#6b7280' : razonCorriente >= 1.5 ? '#4caf50' : razonCorriente >= 1 ? '#ff9800' : '#e53935'}
             sub="Sobre 1 puedes cubrir tus deudas; bajo 1 estás apretado" />
-          <Fila k="🧊 Plata detenida en stock" v={totalActivos > 0 ? `${Math.round(invCosto / totalActivos * 100)}%` : '—'} color="#2196f3"
-            sub="Mientras más alto, más plata tienes inmovilizada en productos" />
+          <Fila k="📦 Plata detenida en stock" v={totalActivos > 0 ? `${Math.round((invCosto + congCosto) / totalActivos * 100)}%` : '—'} color="#2196f3"
+            sub={congCosto > 0
+              ? `Incluye ${fmt(congCosto)} en congelados. Mientras más alto, más plata inmovilizada en productos`
+              : 'Mientras más alto, más plata tienes inmovilizada en productos'} />
         </Seccion>
 
         {/* Resumen en palabras */}
@@ -205,7 +218,8 @@ export default function SituacionFinancieraPage() {
             Tienes <span className="font-bold" style={{ color: '#4caf50' }}>{fmt(totalActivos)}</span> en activos
             {disponible > 0 && <>, de los cuales <span style={{ color: '#4caf50' }}>{fmt(disponible)}</span> son plata disponible</>}
             {cxc > 0 && <>, te deben <span style={{ color: '#ff9800' }}>{fmt(cxc)}</span></>}
-            {invCosto > 0 && <> y tienes <span style={{ color: '#2196f3' }}>{fmt(invCosto)}</span> en stock ({paquetes.toLocaleString('es-CL')} paquetes)</>}.
+            {invCosto > 0 && <> y tienes <span style={{ color: '#2196f3' }}>{fmt(invCosto)}</span> en stock ({paquetes.toLocaleString('es-CL')} paquetes)</>}
+            {congCosto > 0 && <>, más <span style={{ color: '#00bcd4' }}>{fmt(congCosto)}</span> congelados aparte ({congPaquetes.toLocaleString('es-CL')} paquetes)</>}.
             {totalPasivos > 0
               ? <> Debes <span className="font-bold" style={{ color: '#e53935' }}>{fmt(totalPasivos)}</span>
                   {cxp > 0 && <>, de los cuales {fmt(cxp)} son a proveedores</>}.</>

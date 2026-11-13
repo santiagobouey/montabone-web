@@ -4,6 +4,8 @@ export interface Producto {
   sku: string | null;
   formato: string;
   stock: number;
+  /** Unidades congeladas. Se contabilizan aparte: NO entran en el stock normal. */
+  stock_congelado: number;
   precio: number;
   costo: number;
   fecha_ingreso: string;

@@ -6,12 +6,16 @@ import { Producto } from '@/types';
 
 const fmt = (v: number) => `$${Math.round(v).toLocaleString('es-CL')}`;
 
+type Vista = 'normal' | 'congelado';
+type Movimiento = { producto: Producto; direccion: 'congelar' | 'descongelar' | 'ajustar' };
+
 export default function InventarioPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editando, setEditando] = useState<Producto | null>(null);
+  const [vista, setVista] = useState<Vista>('normal');
 
   const [nombre, setNombre] = useState('');
   const [sku, setSku] = useState('');
@@ -22,6 +26,11 @@ export default function InventarioPage() {
   const [fechaIngreso, setFechaIngreso] = useState(new Date().toISOString().split('T')[0]);
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [observaciones, setObservaciones] = useState('');
+
+  // Mover unidades entre stock normal y congelados
+  const [movimiento, setMovimiento] = useState<Movimiento | null>(null);
+  const [cantidadMover, setCantidadMover] = useState('');
+  const [moviendo, setMoviendo] = useState(false);
 
   const [ritmoVenta, setRitmoVenta] = useState<Record<string, number>>({});
 
@@ -88,6 +97,58 @@ export default function InventarioPage() {
     setSaving(false);
   }
 
+  function abrirMovimiento(producto: Producto, direccion: Movimiento['direccion']) {
+    setMovimiento({ producto, direccion });
+    setCantidadMover(direccion === 'ajustar' ? String(producto.stock_congelado ?? 0) : '');
+  }
+
+  // Congelar = sale del stock normal y entra a congelados. Descongelar = al revés.
+  // Ajustar = fijar directo cuántos congelados hay, sin tocar el stock normal.
+  async function guardarMovimiento() {
+    if (!movimiento || moviendo) return;
+    const { producto: p, direccion } = movimiento;
+    const n = parseInt(cantidadMover || '0', 10);
+    if (isNaN(n) || n < 0) { alert('Pon un número válido'); return; }
+
+    const congeladoActual = p.stock_congelado ?? 0;
+    let nuevoStock = p.stock;
+    let nuevoCongelado = congeladoActual;
+
+    if (direccion === 'congelar') {
+      if (n <= 0) return;
+      if (n > p.stock) { alert(`Solo tienes ${p.stock} unidades en el stock normal`); return; }
+      nuevoStock = p.stock - n;
+      nuevoCongelado = congeladoActual + n;
+    } else if (direccion === 'descongelar') {
+      if (n <= 0) return;
+      if (n > congeladoActual) { alert(`Solo tienes ${congeladoActual} unidades congeladas`); return; }
+      nuevoStock = p.stock + n;
+      nuevoCongelado = congeladoActual - n;
+    } else {
+      nuevoCongelado = n;
+    }
+
+    setMoviendo(true);
+    try {
+      const { error } = await supabase.from('productos')
+        .update({ stock: nuevoStock, stock_congelado: nuevoCongelado }).eq('id', p.id);
+      if (error) throw new Error(error.message);
+      setMovimiento(null);
+      setCantidadMover('');
+      await fetchProductos();
+    } catch (e: unknown) {
+      alert('No se pudo guardar: ' + (e instanceof Error ? e.message : 'error desconocido'));
+    } finally {
+      setMoviendo(false);
+    }
+  }
+
+  const udsNormal = productos.reduce((s, p) => s + p.stock, 0);
+  const udsCongelado = productos.reduce((s, p) => s + (p.stock_congelado ?? 0), 0);
+  const congCosto = productos.reduce((s, p) => s + (p.stock_congelado ?? 0) * (p.costo || 0), 0);
+  const congVenta = productos.reduce((s, p) => s + (p.stock_congelado ?? 0) * p.precio, 0);
+  const conCongelados = productos.filter((p) => (p.stock_congelado ?? 0) > 0);
+
   if (loading) return <div className="flex items-center justify-center h-full"><div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
@@ -95,62 +156,222 @@ export default function InventarioPage() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: '#f5f5f5' }}>Inventario</h1>
-          <p className="text-sm" style={{ color: '#6b7280' }}>{productos.length} productos · {productos.reduce((s, p) => s + p.stock, 0)} uds total</p>
+          <p className="text-sm" style={{ color: '#6b7280' }}>
+            {productos.length} productos · {udsNormal} uds en stock
+            {udsCongelado > 0 && <span style={{ color: '#00bcd4' }}> · 🧊 {udsCongelado} congeladas</span>}
+          </p>
         </div>
         <button onClick={abrirNuevo} className="px-4 py-2 rounded-lg font-semibold text-sm text-white" style={{ backgroundColor: '#e53935' }}>+ Nuevo</button>
       </div>
 
-      {/* Valor del inventario */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#4caf50' }}>
-          <p className="text-xs" style={{ color: '#6b7280' }}>💵 Valor total de venta</p>
-          <p className="text-2xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(productos.reduce((s, p) => s + p.stock * p.precio, 0))}</p>
-          <p className="text-xs" style={{ color: '#6b7280' }}>Si vendes todo el stock</p>
-        </div>
-        <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
-          <p className="text-xs" style={{ color: '#6b7280' }}>🏷️ Valor a costo</p>
-          <p className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(productos.reduce((s, p) => s + p.stock * (p.costo || 0), 0))}</p>
-          <p className="text-xs" style={{ color: '#6b7280' }}>Lo que te costó</p>
-        </div>
+      {/* Stock normal / Congelados */}
+      <div className="flex gap-2 mb-4">
+        {([
+          { id: 'normal' as Vista, label: '📦 Stock normal', color: '#4caf50' },
+          { id: 'congelado' as Vista, label: '🧊 Congelados', color: '#00bcd4' },
+        ]).map((t) => (
+          <button key={t.id} onClick={() => setVista(t.id)}
+            className="flex-1 py-2 rounded-lg text-sm font-bold border"
+            style={{
+              backgroundColor: vista === t.id ? t.color + '20' : '#141414',
+              borderColor: vista === t.id ? t.color : '#2a2a2a',
+              color: vista === t.id ? t.color : '#6b7280',
+            }}>
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      <div className="space-y-3">
-        {productos.map((p) => {
-          const color = p.stock === 0 ? '#e53935' : p.stock <= 10 ? '#ff9800' : '#4caf50';
-          const vendidas30 = ritmoVenta[p.id] || 0;
-          const diasAgote = p.stock > 0 && vendidas30 > 0 ? Math.round(p.stock / (vendidas30 / 30)) : null;
-          const colorAgote = diasAgote === null ? '#6b7280' : diasAgote <= 7 ? '#e53935' : diasAgote <= 14 ? '#ff9800' : '#4caf50';
-          return (
-            <div key={p.id} className="rounded-xl border p-4 cursor-pointer" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }} onClick={() => abrirEditar(p)}>
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-bold" style={{ color: '#f5f5f5' }}>{p.nombre}</p>
-                  <p className="text-sm" style={{ color: '#6b7280' }}>{p.formato} · {fmt(p.precio)} c/u {p.costo ? `· Costo: ${fmt(p.costo)}` : ''}</p>
-                  {p.sku && <p className="text-xs" style={{ color: '#6b7280' }}>SKU: {p.sku}</p>}
-                  {p.fecha_vencimiento && (
-                    <p className="text-xs mt-1" style={{ color: '#ff9800' }}>
-                      Vence: {new Date(p.fecha_vencimiento + 'T12:00:00').toLocaleDateString('es-CL')}
-                    </p>
-                  )}
-                  {diasAgote !== null && (
-                    <p className="text-xs mt-1 font-semibold" style={{ color: colorAgote }}>
-                      ⏳ Se agota en ~{diasAgote} día{diasAgote !== 1 ? 's' : ''} <span style={{ color: '#6b7280', fontWeight: 'normal' }}>({vendidas30} uds vendidas en 30 días)</span>
-                    </p>
-                  )}
-                  {p.stock > 0 && vendidas30 === 0 && (
-                    <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Sin ventas en los últimos 30 días</p>
-                  )}
+      {vista === 'normal' ? (
+        <>
+          {/* Valor del inventario (sin contar congelados) */}
+          <div className="grid grid-cols-2 gap-3 mb-2">
+            <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#4caf50' }}>
+              <p className="text-xs" style={{ color: '#6b7280' }}>💵 Valor total de venta</p>
+              <p className="text-2xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(productos.reduce((s, p) => s + p.stock * p.precio, 0))}</p>
+              <p className="text-xs" style={{ color: '#6b7280' }}>Si vendes todo el stock</p>
+            </div>
+            <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
+              <p className="text-xs" style={{ color: '#6b7280' }}>🏷️ Valor a costo</p>
+              <p className="text-2xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(productos.reduce((s, p) => s + p.stock * (p.costo || 0), 0))}</p>
+              <p className="text-xs" style={{ color: '#6b7280' }}>Lo que te costó</p>
+            </div>
+          </div>
+          {udsCongelado > 0 && (
+            <p className="text-xs mb-4" style={{ color: '#6b7280' }}>
+              No incluye {udsCongelado} unidades congeladas ({fmt(congVenta)}), que se cuentan aparte en 🧊 Congelados.
+            </p>
+          )}
+          {udsCongelado === 0 && <div className="mb-4" />}
+
+          <div className="space-y-3">
+            {productos.map((p) => {
+              const color = p.stock === 0 ? '#e53935' : p.stock <= 10 ? '#ff9800' : '#4caf50';
+              const vendidas30 = ritmoVenta[p.id] || 0;
+              const diasAgote = p.stock > 0 && vendidas30 > 0 ? Math.round(p.stock / (vendidas30 / 30)) : null;
+              const colorAgote = diasAgote === null ? '#6b7280' : diasAgote <= 7 ? '#e53935' : diasAgote <= 14 ? '#ff9800' : '#4caf50';
+              const cong = p.stock_congelado ?? 0;
+              return (
+                <div key={p.id} className="rounded-xl border p-4 cursor-pointer" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }} onClick={() => abrirEditar(p)}>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-bold" style={{ color: '#f5f5f5' }}>{p.nombre}</p>
+                      <p className="text-sm" style={{ color: '#6b7280' }}>{p.formato} · {fmt(p.precio)} c/u {p.costo ? `· Costo: ${fmt(p.costo)}` : ''}</p>
+                      {p.sku && <p className="text-xs" style={{ color: '#6b7280' }}>SKU: {p.sku}</p>}
+                      {cong > 0 && (
+                        <p className="text-xs mt-1 font-semibold" style={{ color: '#00bcd4' }}>
+                          🧊 {cong} congeladas aparte
+                        </p>
+                      )}
+                      {p.fecha_vencimiento && (
+                        <p className="text-xs mt-1" style={{ color: '#ff9800' }}>
+                          Vence: {new Date(p.fecha_vencimiento + 'T12:00:00').toLocaleDateString('es-CL')}
+                        </p>
+                      )}
+                      {diasAgote !== null && (
+                        <p className="text-xs mt-1 font-semibold" style={{ color: colorAgote }}>
+                          ⏳ Se agota en ~{diasAgote} día{diasAgote !== 1 ? 's' : ''} <span style={{ color: '#6b7280', fontWeight: 'normal' }}>({vendidas30} uds vendidas en 30 días)</span>
+                        </p>
+                      )}
+                      {p.stock > 0 && vendidas30 === 0 && (
+                        <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Sin ventas en los últimos 30 días</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-3xl font-extrabold" style={{ color }}>{p.stock}</p>
+                      <p className="text-xs" style={{ color: '#6b7280' }}>uds</p>
+                      {p.stock > 0 && <p className="text-xs mt-1" style={{ color: '#4caf50' }}>{fmt(p.stock * p.precio)}</p>}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-3xl font-extrabold" style={{ color }}>{p.stock}</p>
-                  <p className="text-xs" style={{ color: '#6b7280' }}>uds</p>
-                  {p.stock > 0 && <p className="text-xs mt-1" style={{ color: '#4caf50' }}>{fmt(p.stock * p.precio)}</p>}
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Resumen de congelados */}
+          <div className="grid grid-cols-2 gap-3 mb-2">
+            <div className="col-span-2 rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#00bcd4' }}>
+              <p className="text-xs" style={{ color: '#6b7280' }}>🧊 Paquetes congelados</p>
+              <p className="text-3xl font-extrabold" style={{ color: '#00bcd4' }}>{udsCongelado}</p>
+              <p className="text-xs" style={{ color: '#6b7280' }}>
+                {conCongelados.length} producto{conCongelados.length !== 1 ? 's' : ''} con congelados · no entran en el stock normal
+              </p>
+            </div>
+            <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#ff9800' }}>
+              <p className="text-xs" style={{ color: '#6b7280' }}>🏷️ Valor a costo</p>
+              <p className="text-xl font-extrabold" style={{ color: '#ff9800' }}>{fmt(congCosto)}</p>
+              <p className="text-xs" style={{ color: '#6b7280' }}>Plata detenida en el congelador</p>
+            </div>
+            <div className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#4caf50' }}>
+              <p className="text-xs" style={{ color: '#6b7280' }}>💵 Valor de venta</p>
+              <p className="text-xl font-extrabold" style={{ color: '#4caf50' }}>{fmt(congVenta)}</p>
+              <p className="text-xs" style={{ color: '#6b7280' }}>Si los vendes todos</p>
+            </div>
+          </div>
+
+          <p className="text-xs mb-4 p-3 rounded-lg" style={{ backgroundColor: '#00bcd410', color: '#6b7280' }}>
+            🧊 <strong style={{ color: '#00bcd4' }}>Congelar</strong> saca unidades del stock normal y las pasa acá.
+            🔥 <strong style={{ color: '#ff9800' }}>Pasar a stock</strong> las devuelve.
+            ✏️ <strong style={{ color: '#f5f5f5' }}>Ajustar</strong> fija el número directo, sin tocar el stock normal
+            (para cuando congelaste algo que nunca estuvo cargado).
+          </p>
+
+          <div className="space-y-3">
+            {productos.map((p) => {
+              const cong = p.stock_congelado ?? 0;
+              return (
+                <div key={p.id} className="rounded-xl border p-4" style={{ backgroundColor: '#141414', borderColor: cong > 0 ? '#00bcd440' : '#2a2a2a' }}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="min-w-0">
+                      <p className="font-bold" style={{ color: '#f5f5f5' }}>{p.nombre}</p>
+                      <p className="text-sm" style={{ color: '#6b7280' }}>
+                        {p.formato} · {fmt(p.precio)} c/u {p.costo ? `· Costo: ${fmt(p.costo)}` : ''}
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: '#6b7280' }}>En stock normal: <strong style={{ color: '#f5f5f5' }}>{p.stock}</strong> uds</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-3xl font-extrabold" style={{ color: cong > 0 ? '#00bcd4' : '#4b5563' }}>{cong}</p>
+                      <p className="text-xs" style={{ color: '#6b7280' }}>congeladas</p>
+                      {cong > 0 && <p className="text-xs mt-1" style={{ color: '#4caf50' }}>{fmt(cong * p.precio)}</p>}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => abrirMovimiento(p, 'congelar')} disabled={p.stock === 0}
+                      className="text-xs px-3 py-1.5 rounded border font-semibold disabled:opacity-30"
+                      style={{ borderColor: '#00bcd460', color: '#00bcd4', backgroundColor: '#00bcd410' }}>
+                      🧊 Congelar
+                    </button>
+                    <button onClick={() => abrirMovimiento(p, 'descongelar')} disabled={cong === 0}
+                      className="text-xs px-3 py-1.5 rounded border font-semibold disabled:opacity-30"
+                      style={{ borderColor: '#ff980060', color: '#ff9800', backgroundColor: '#ff980010' }}>
+                      🔥 Pasar a stock
+                    </button>
+                    <button onClick={() => abrirMovimiento(p, 'ajustar')}
+                      className="text-xs px-3 py-1.5 rounded border font-semibold"
+                      style={{ borderColor: '#2a2a2a', color: '#9ca3af', backgroundColor: '#1c1c1c' }}>
+                      ✏️ Ajustar
+                    </button>
+                  </div>
                 </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Modal mover unidades a/desde congelados */}
+      {movimiento && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <div className="w-full max-w-sm rounded-2xl p-6" style={{ backgroundColor: '#141414' }}>
+            <p className="text-lg font-bold mb-1" style={{ color: '#f5f5f5' }}>
+              {movimiento.direccion === 'congelar' ? '🧊 Congelar unidades'
+                : movimiento.direccion === 'descongelar' ? '🔥 Pasar a stock normal'
+                : '✏️ Ajustar congelados'}
+            </p>
+            <p className="text-sm mb-4" style={{ color: '#6b7280' }}>{movimiento.producto.nombre}</p>
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
+                <p className="text-xs" style={{ color: '#6b7280' }}>Stock normal</p>
+                <p className="text-xl font-extrabold" style={{ color: '#4caf50' }}>{movimiento.producto.stock}</p>
+              </div>
+              <div className="rounded-lg p-3" style={{ backgroundColor: '#1c1c1c' }}>
+                <p className="text-xs" style={{ color: '#6b7280' }}>Congeladas</p>
+                <p className="text-xl font-extrabold" style={{ color: '#00bcd4' }}>{movimiento.producto.stock_congelado ?? 0}</p>
               </div>
             </div>
-          );
-        })}
-      </div>
+
+            <label className="block text-xs font-semibold uppercase mb-1" style={{ color: '#6b7280' }}>
+              {movimiento.direccion === 'ajustar' ? 'Cuántas congeladas hay en total' : 'Cuántas unidades'}
+            </label>
+            <input type="number" inputMode="numeric" autoFocus value={cantidadMover}
+              onChange={(e) => setCantidadMover(e.target.value)}
+              className="w-full rounded-lg px-3 py-3 text-lg font-bold border mb-4"
+              style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
+
+            {movimiento.direccion === 'ajustar' && (
+              <p className="text-xs mb-4 p-3 rounded-lg" style={{ backgroundColor: '#ff980015', color: '#ff9800' }}>
+                Esto NO toca el stock normal: solo fija cuántas congeladas tienes.
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => { setMovimiento(null); setCantidadMover(''); }} disabled={moviendo}
+                className="flex-1 py-3 rounded-lg font-bold text-sm border disabled:opacity-40"
+                style={{ borderColor: '#2a2a2a', color: '#9ca3af', backgroundColor: '#1c1c1c' }}>
+                Cancelar
+              </button>
+              <button onClick={guardarMovimiento} disabled={moviendo || cantidadMover === ''}
+                className="flex-1 py-3 rounded-lg font-bold text-sm text-white disabled:opacity-40"
+                style={{ backgroundColor: movimiento.direccion === 'descongelar' ? '#ff9800' : '#00bcd4' }}>
+                {moviendo ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" style={{ backgroundColor: 'rgba(0,0,0,0.7)' }}>
@@ -174,6 +395,13 @@ export default function InventarioPage() {
                   className="w-full rounded-lg px-3 py-2 text-sm border" style={{ backgroundColor: '#1c1c1c', borderColor: '#2a2a2a', color: '#f5f5f5' }} />
               </div>
             ))}
+
+            {editando && (
+              <p className="text-xs mb-3 p-3 rounded-lg" style={{ backgroundColor: '#00bcd410', color: '#6b7280' }}>
+                🧊 Congeladas: <strong style={{ color: '#00bcd4' }}>{editando.stock_congelado ?? 0}</strong> uds.
+                Se manejan en la pestaña Congelados y no entran en el stock de arriba.
+              </p>
+            )}
 
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
