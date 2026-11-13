@@ -226,7 +226,10 @@ export default function MermaPage() {
 
   const valorDe = (m: Merma) => (m.producto?.precio ?? 0) * m.cantidad;
   const costoDe = (m: Merma) => (m.producto?.costo ?? 0) * m.cantidad;
-  const costoTotalMerma = mermas.reduce((s, m) => s + costoDe(m), 0);
+  // Todo lo del registro y del informe se mira por mes (mesInf / anioInf)
+  const claveMes = `${anioInf}-${String(mesInf + 1).padStart(2, '0')}`;
+  const mermasMes = mermas.filter((m) => (m.fecha || '').slice(0, 7) === claveMes);
+  const costoTotalMerma = mermasMes.reduce((s, m) => s + costoDe(m), 0);
   const totalUnidades = items.reduce((s, i) => s + i.cantidad, 0);
   const colorMotivo = MOTIVOS.find((x) => x.key === motivo)!.color;
 
@@ -248,8 +251,6 @@ export default function MermaPage() {
   const segHechos = gruposSeg.filter((g) => g.hechos >= g.total).sort((a, b) => b.fecha.localeCompare(a.fecha));
 
   // ===== INFORME DEL MES =====
-  const claveMes = `${anioInf}-${String(mesInf + 1).padStart(2, '0')}`;
-  const mermasMes = mermas.filter((m) => (m.fecha || '').slice(0, 7) === claveMes);
   const inf = {
     unidades: mermasMes.reduce((s, m) => s + m.cantidad, 0),
     costo: mermasMes.reduce((s, m) => s + costoDe(m), 0),
@@ -315,30 +316,32 @@ export default function MermaPage() {
         ))}
       </div>
 
+      {/* Selector de mes: manda tanto en el registro como en el informe */}
+      <div className="rounded-xl border p-4 mb-4 no-print" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={() => setAnioInf((a) => a - 1)} className="w-8 h-8 rounded-lg border" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>‹</button>
+          <p className="font-bold" style={{ color: '#f5f5f5' }}>{anioInf}</p>
+          <button onClick={() => setAnioInf((a) => a + 1)} disabled={anioInf >= hoyD.getFullYear()} className="w-8 h-8 rounded-lg border disabled:opacity-30" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>›</button>
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {MESES.map((m, i) => {
+            const esFuturo = anioInf === hoyD.getFullYear() && i > hoyD.getMonth();
+            return (
+              <button key={m} onClick={() => !esFuturo && setMesInf(i)} disabled={esFuturo}
+                className="py-2 rounded-lg text-xs font-semibold border disabled:opacity-30"
+                style={{ borderColor: mesInf === i ? '#e53935' : '#2a2a2a', backgroundColor: mesInf === i ? '#e5393520' : 'transparent', color: mesInf === i ? '#e53935' : '#9ca3af' }}>
+                {m.slice(0, 3)}
+              </button>
+            );
+          })}
+        </div>
+        {vista === 'informe' && (
+          <button onClick={() => window.print()} className="w-full mt-3 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#2196f3' }}>🖨️ Imprimir informe</button>
+        )}
+      </div>
+
       {vista === 'informe' ? (
         <>
-          {/* Selector de mes */}
-          <div className="rounded-xl border p-4 mb-4 no-print" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}>
-            <div className="flex items-center justify-between mb-3">
-              <button onClick={() => setAnioInf((a) => a - 1)} className="w-8 h-8 rounded-lg border" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>‹</button>
-              <p className="font-bold" style={{ color: '#f5f5f5' }}>{anioInf}</p>
-              <button onClick={() => setAnioInf((a) => a + 1)} disabled={anioInf >= hoyD.getFullYear()} className="w-8 h-8 rounded-lg border disabled:opacity-30" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>›</button>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {MESES.map((m, i) => {
-                const esFuturo = anioInf === hoyD.getFullYear() && i > hoyD.getMonth();
-                return (
-                  <button key={m} onClick={() => !esFuturo && setMesInf(i)} disabled={esFuturo}
-                    className="py-2 rounded-lg text-xs font-semibold border disabled:opacity-30"
-                    style={{ borderColor: mesInf === i ? '#e53935' : '#2a2a2a', backgroundColor: mesInf === i ? '#e5393520' : 'transparent', color: mesInf === i ? '#e53935' : '#9ca3af' }}>
-                    {m.slice(0, 3)}
-                  </button>
-                );
-              })}
-            </div>
-            <button onClick={() => window.print()} className="w-full mt-3 py-2 rounded-lg font-bold text-sm text-white" style={{ backgroundColor: '#2196f3' }}>🖨️ Imprimir informe</button>
-          </div>
-
           <div id="informe-merma">
             <div className="print-only" style={{ marginBottom: 16 }}>
               <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Montabone — Informe de Mermas</h1>
@@ -492,13 +495,13 @@ export default function MermaPage() {
       {/* Totales */}
       {/* Costo total en mermas */}
       <div className="rounded-xl border p-4 mb-4" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: '#e53935' }}>
-        <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>💸 Costo total en mermas</p>
+        <p className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: '#6b7280' }}>💸 Costo en mermas · {MESES[mesInf]} {anioInf}</p>
         <p className="text-3xl font-extrabold" style={{ color: '#e53935' }}>{fmt(costoTotalMerma)}</p>
-        <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Lo que costó producir/comprar todo lo mermado</p>
+        <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Lo que costó producir/comprar lo mermado este mes</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-6">
-        {MOTIVOS.map((mo) => ({ label: mo.label, color: mo.color, lista: mermas.filter((m) => m.motivo === mo.key) }))
+        {MOTIVOS.map((mo) => ({ label: mo.label, color: mo.color, lista: mermasMes.filter((m) => m.motivo === mo.key) }))
           .filter((t) => t.lista.length > 0)
           .map((t) => (
           <div key={t.label} className="rounded-xl border p-3" style={{ backgroundColor: '#141414', borderColor: '#2a2a2a', borderLeftWidth: 4, borderLeftColor: t.color }}>
@@ -510,15 +513,15 @@ export default function MermaPage() {
       </div>
 
       {/* Lista agrupada por categoría */}
-      {mermas.length === 0 ? (
+      {mermasMes.length === 0 ? (
         <div className="text-center py-12" style={{ color: '#6b7280' }}>
           <p className="text-3xl mb-2">📉</p>
-          <p>No hay mermas registradas</p>
+          <p>No hay mermas registradas en {MESES[mesInf]} {anioInf}</p>
         </div>
       ) : (
         <div className="space-y-5">
           {MOTIVOS.map((mot) => {
-            const lista = mermas.filter((m) => m.motivo === mot.key);
+            const lista = mermasMes.filter((m) => m.motivo === mot.key);
             if (lista.length === 0) return null;
             return (
               <div key={mot.key}>

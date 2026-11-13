@@ -45,7 +45,9 @@ interface Reporte {
   ventasMesAnterior: number; ventasAnioAnterior: number;
   ventasYTD: number; costosYTD: number; comisionesYTD: number;
   // Ventas
-  unidades: number; unidadesPedidos: number; unidadesDetalle: number; unidadesEventos: number; kilos: number; precioProm: number; precioPromKilo: number;
+  unidades: number; unidadesPedidos: number; unidadesDetalle: number; unidadesEventos: number;
+  unidadesCongeladas: number; unidadesNormales: number;
+  kilos: number; precioProm: number; precioPromKilo: number;
   porProducto: Prod[]; porCanal: Ent[]; topClientes: Ent[];
   // Costos producción
   cogsEstimado: number; costoUnitProm: number; facturasProv: number;
@@ -120,9 +122,9 @@ export default function ReportesPage() {
           pedCxc, detCxc, costCxp, datosAnioRes,
           pedCobAnt, detCobAnt, pedPendAnt, detPendAnt, gastosOpRes,
         ] = await Promise.all([
-          supabase.from('pedidos').select('cliente_id, total, estado, vendedor, detalle:detalle_pedido(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
-          supabase.from('ventas_detalle').select('total, nombre_comprador, vendedor, con_boleta, items:items_venta_detalle(cantidad, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
-          supabase.from('ventas_evento').select('total, cantidad, producto:productos(nombre, costo)').gte('fecha', inicio).lte('fecha', fin),
+          supabase.from('pedidos').select('cliente_id, total, estado, vendedor, detalle:detalle_pedido(cantidad, congeladas, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
+          supabase.from('ventas_detalle').select('total, nombre_comprador, vendedor, con_boleta, items:items_venta_detalle(cantidad, congeladas, precio_unitario, producto:productos(nombre, costo))').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
+          supabase.from('ventas_evento').select('total, cantidad, congeladas, producto:productos(nombre, costo)').gte('fecha', inicio).lte('fecha', fin),
           supabase.from('ventas_mayor').select('total, costo, cliente:clientes(nombre), items:items_venta_mayor(kilos, subtotal)').in('estado', ['entregado', 'pagado']).gte('fecha', inicio).lte('fecha', fin),
           supabase.from('clientes').select('id, nombre, tipo'),
           supabase.from('costos_factura').select('monto').gte('created_at', inicio).lte('created_at', fin + 'T23:59:59'),
@@ -179,16 +181,21 @@ export default function ReportesPage() {
           prodMap[nombre].unidades += uni; prodMap[nombre].total += total; prodMap[nombre].costo += costo;
         };
         let unidades = 0, cogsEstimado = 0, unidadesPedidos = 0, unidadesDetalle = 0, unidadesEventos = 0;
+        // Paquetes que salieron del congelador (el resto salio del stock normal)
+        let unidadesCongeladas = 0;
         for (const p of (pedM.data || []) as any[]) for (const d of (p.detalle || [])) {
           const c = d.producto?.costo ?? 0; unidades += d.cantidad; unidadesPedidos += d.cantidad; cogsEstimado += d.cantidad * c;
+          unidadesCongeladas += Math.min(d.congeladas ?? 0, d.cantidad);
           sumaProd(d.producto?.nombre ?? '—', d.cantidad, d.cantidad * d.precio_unitario, d.cantidad * c);
         }
         for (const v of (detM.data || []) as any[]) for (const i of (v.items || [])) {
           const c = i.producto?.costo ?? 0; unidades += i.cantidad; unidadesDetalle += i.cantidad; cogsEstimado += i.cantidad * c;
+          unidadesCongeladas += Math.min(i.congeladas ?? 0, i.cantidad);
           sumaProd(i.producto?.nombre ?? '—', i.cantidad, i.cantidad * i.precio_unitario, i.cantidad * c);
         }
         for (const v of (eveM.data || []) as any[]) {
           const c = v.producto?.costo ?? 0; unidades += (v.cantidad || 0); unidadesEventos += (v.cantidad || 0); cogsEstimado += (v.cantidad || 0) * c;
+          unidadesCongeladas += Math.min(v.congeladas ?? 0, v.cantidad || 0);
           sumaProd(v.producto?.nombre ?? '—', v.cantidad || 0, v.total, (v.cantidad || 0) * c);
         }
         const kilos = ((mayM.data || []) as any[]).reduce((s, v) => s + (v.items || []).reduce((a: number, i: any) => a + (i.kilos || 0), 0), 0);
@@ -304,7 +311,9 @@ export default function ReportesPage() {
         setData({
           ventasTotales, ventasNetas, iva, costoVentas, margenBruto, comisiones, gastosEventos, gastosOper, utilidad,
           ventasMesAnterior, ventasAnioAnterior, ventasYTD, costosYTD, comisionesYTD,
-          unidades, unidadesPedidos, unidadesDetalle, unidadesEventos, kilos, precioProm, precioPromKilo, porProducto, porCanal, topClientes,
+          unidades, unidadesPedidos, unidadesDetalle, unidadesEventos,
+          unidadesCongeladas, unidadesNormales: Math.max(0, unidades - unidadesCongeladas),
+          kilos, precioProm, precioPromKilo, porProducto, porCanal, topClientes,
           cogsEstimado, costoUnitProm, facturasProv, cxc, cxp, invCosto, invVenta,
           cobradoAnteriores, pendienteAnteriores, stockUnidades,
           numClientes, ticketPedidos, ticketDetalle, vendedores, detalleConBoleta, detalleSinBoleta, serie,
@@ -516,6 +525,10 @@ export default function ReportesPage() {
           <Fila k="• Paquetes a clientes (pedidos)" v={`${(d?.unidadesPedidos ?? 0).toLocaleString('es-CL')} u.`} color="#e53935" />
           <Fila k="• Paquetes al detalle" v={`${(d?.unidadesDetalle ?? 0).toLocaleString('es-CL')} u.`} color="#9c27b0" />
           {(d?.unidadesEventos ?? 0) > 0 && <Fila k="• Paquetes en eventos" v={`${(d?.unidadesEventos ?? 0).toLocaleString('es-CL')} u.`} color="#ff9800" />}
+          <Fila
+            k={`🧊 Paquetes vendidos congelados${(d?.unidades ?? 0) > 0 ? ` (${Math.round((d?.unidadesCongeladas ?? 0) / (d?.unidades ?? 1) * 100)}% de lo vendido)` : ''}`}
+            v={`${(d?.unidadesCongeladas ?? 0).toLocaleString('es-CL')} u.`} color="#00bcd4" />
+          <Fila k="📦 Paquetes vendidos del stock normal" v={`${(d?.unidadesNormales ?? 0).toLocaleString('es-CL')} u.`} color="#4caf50" />
           <Fila k="Kilos vendidos (por mayor)" v={`${(d?.kilos ?? 0).toLocaleString('es-CL')} kg`} />
           <Fila k="Precio promedio por unidad" v={fmt(d?.precioProm ?? 0)} />
           <Fila k="Precio promedio por kilo (neto)" v={fmt(d?.precioPromKilo ?? 0)} />
