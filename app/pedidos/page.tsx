@@ -22,6 +22,8 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto'
 interface ItemPedido {
   producto: Producto;
   cantidad: number;
+  /** De esas unidades, cuántas salen del congelador (el resto sale del stock normal). */
+  congeladas: number;
   precioUnitario: number;
 }
 
@@ -40,7 +42,7 @@ interface VentaDetalle {
   nombre_comprador: string | null;
   con_boleta?: boolean;
   observaciones: string | null;
-  items: { producto_id: string | null; nombre: string; cantidad: number; precio_unitario: number }[];
+  items: { producto_id: string | null; nombre: string; cantidad: number; congeladas: number; precio_unitario: number }[];
 }
 
 export default function PedidosPage() {
@@ -137,14 +139,14 @@ export default function PedidosPage() {
     try {
       const { data } = await supabase
         .from('ventas_detalle')
-        .select('id, fecha, total, estado, vendedor, nombre_comprador, con_boleta, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto_id, producto:productos(nombre))')
+        .select('id, fecha, total, estado, vendedor, nombre_comprador, con_boleta, observaciones, items:items_venta_detalle(cantidad, congeladas, precio_unitario, producto_id, producto:productos(nombre))')
         .gte('fecha', inicio)
         .lte('fecha', fin)
         .order('fecha', { ascending: false });
       if (data) {
         const mapped: VentaDetalle[] = (data as unknown as Array<{
           id: string; fecha: string; total: number; estado: string; vendedor: string | null; nombre_comprador: string | null; con_boleta: boolean; observaciones: string | null;
-          items: Array<{ cantidad: number; precio_unitario: number; producto_id: string | null; producto: { nombre: string } | null }>;
+          items: Array<{ cantidad: number; congeladas: number | null; precio_unitario: number; producto_id: string | null; producto: { nombre: string } | null }>;
         }>).map((v) => ({
           id: v.id,
           fecha: v.fecha,
@@ -158,6 +160,7 @@ export default function PedidosPage() {
             producto_id: i.producto_id,
             nombre: i.producto?.nombre ?? '—',
             cantidad: i.cantidad,
+            congeladas: i.congeladas ?? 0,
             precio_unitario: i.precio_unitario,
           })),
         }));
@@ -174,17 +177,17 @@ export default function PedidosPage() {
           .select('*, cliente:clientes(nombre, rut), detalle:detalle_pedido(*, producto:productos(*))')
           .in('estado', ['pendiente', 'preparado', 'entregado']).lt('fecha', inicio).order('fecha', { ascending: true }),
         supabase.from('ventas_detalle')
-          .select('id, fecha, total, estado, vendedor, nombre_comprador, con_boleta, observaciones, items:items_venta_detalle(cantidad, precio_unitario, producto_id, producto:productos(nombre))')
+          .select('id, fecha, total, estado, vendedor, nombre_comprador, con_boleta, observaciones, items:items_venta_detalle(cantidad, congeladas, precio_unitario, producto_id, producto:productos(nombre))')
           .in('estado', ['pendiente', 'preparado', 'entregado']).lt('fecha', inicio).order('fecha', { ascending: true }),
       ]);
       setArrastradosPed(pedR.data || []);
       const mappedDet: VentaDetalle[] = ((detR.data || []) as unknown as Array<{
         id: string; fecha: string; total: number; estado: string; vendedor: string | null; nombre_comprador: string | null; con_boleta: boolean; observaciones: string | null;
-        items: Array<{ cantidad: number; precio_unitario: number; producto_id: string | null; producto: { nombre: string } | null }>;
+        items: Array<{ cantidad: number; congeladas: number | null; precio_unitario: number; producto_id: string | null; producto: { nombre: string } | null }>;
       }>).map((v) => ({
         id: v.id, fecha: v.fecha, total: v.total, estado: v.estado, vendedor: v.vendedor,
         nombre_comprador: v.nombre_comprador, con_boleta: v.con_boleta, observaciones: v.observaciones,
-        items: (v.items || []).map((i) => ({ producto_id: i.producto_id, nombre: i.producto?.nombre ?? '—', cantidad: i.cantidad, precio_unitario: i.precio_unitario })),
+        items: (v.items || []).map((i) => ({ producto_id: i.producto_id, nombre: i.producto?.nombre ?? '—', cantidad: i.cantidad, congeladas: i.congeladas ?? 0, precio_unitario: i.precio_unitario })),
       }));
       setArrastradosDet(mappedDet);
     } catch {}
@@ -235,6 +238,7 @@ export default function PedidosPage() {
       return {
         producto: (prod || { id: it.producto_id, nombre: it.nombre, stock: 0, precio: it.precio_unitario }) as unknown as Producto,
         cantidad: it.cantidad,
+        congeladas: it.congeladas ?? 0,
         precioUnitario: it.precio_unitario,
       };
     });
@@ -255,6 +259,7 @@ export default function PedidosPage() {
     const itemsCargados: ItemPedido[] = (p.detalle || []).map((d) => ({
       producto: d.producto as unknown as Producto,
       cantidad: d.cantidad,
+      congeladas: d.congeladas ?? 0,
       precioUnitario: d.precio_unitario,
     }));
     setItems(itemsCargados);
@@ -270,11 +275,18 @@ export default function PedidosPage() {
   function toggleProducto(p: Producto, precioDefault?: number) {
     const exists = items.find((i) => i.producto.id === p.id);
     if (exists) setItems((prev) => prev.filter((i) => i.producto.id !== p.id));
-    else setItems((prev) => [...prev, { producto: p, cantidad: 1, precioUnitario: precioDefault ?? p.precio }]);
+    else setItems((prev) => [...prev, { producto: p, cantidad: 1, congeladas: 0, precioUnitario: precioDefault ?? p.precio }]);
   }
 
   function setPrecioItem(productoId: string, precio: number) {
     setItems((prev) => prev.map((i) => i.producto.id === productoId ? { ...i, precioUnitario: precio } : i));
+  }
+
+  // Cuántas de las unidades de esa línea salen del congelador (máximo: la cantidad del pedido)
+  function setCongeladasItem(productoId: string, valor: number) {
+    setItems((prev) => prev.map((i) => i.producto.id === productoId
+      ? { ...i, congeladas: Math.max(0, Math.min(valor, i.cantidad)) }
+      : i));
   }
 
   const neto = items.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0);
@@ -298,19 +310,19 @@ export default function PedidosPage() {
           // Devolver el stock de los productos que tenía antes
           await ajustarStock((editandoPedido.detalle || []).map((d) => {
             const prod = d.producto as unknown as Producto;
-            return { id: prod?.id, cantidad: d.cantidad };
+            return { id: prod?.id, cantidad: d.cantidad, congeladas: d.congeladas ?? 0 };
           }), +1);
         }
 
         await supabase.from('detalle_pedido').delete().eq('pedido_id', editandoPedido.id);
         const { error: de } = await supabase.from('detalle_pedido').insert(
-          items.map((i) => ({ pedido_id: editandoPedido.id, producto_id: i.producto.id, cantidad: i.cantidad, precio_unitario: i.precioUnitario }))
+          items.map((i) => ({ pedido_id: editandoPedido.id, producto_id: i.producto.id, cantidad: i.cantidad, congeladas: i.congeladas ?? 0, precio_unitario: i.precioUnitario }))
         );
         if (de) throw new Error(de.message);
 
         if (yaDescontado) {
           // Descontar el stock de los productos nuevos
-          await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad })), -1);
+          await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad, congeladas: i.congeladas ?? 0 })), -1);
         }
       } else {
         const { data: pedido, error: pe } = await supabase.from('pedidos').insert({
@@ -321,7 +333,7 @@ export default function PedidosPage() {
         if (!pedido) throw new Error('No se creó el pedido');
 
         const { error: de } = await supabase.from('detalle_pedido').insert(
-          items.map((i) => ({ pedido_id: pedido.id, producto_id: i.producto.id, cantidad: i.cantidad, precio_unitario: i.precioUnitario }))
+          items.map((i) => ({ pedido_id: pedido.id, producto_id: i.producto.id, cantidad: i.cantidad, congeladas: i.congeladas ?? 0, precio_unitario: i.precioUnitario }))
         );
         if (de) throw new Error(de.message);
 
@@ -365,13 +377,14 @@ export default function PedidosPage() {
           evento_id: eventoId,
           producto_id: item.producto.id,
           cantidad: item.cantidad,
+          congeladas: item.congeladas ?? 0,
           precio_unitario: item.precioUnitario,
           total: item.precioUnitario * item.cantidad,
         });
         if (error) throw new Error(`Error guardando ${item.producto.nombre}: ${error.message} (code: ${error.code})`);
       }
       // Descontar leyendo el stock actual de la base (no el cacheado)
-      await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad })), -1);
+      await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad, congeladas: i.congeladas ?? 0 })), -1);
 
       setItems([]);
       setShowModal(false);
@@ -395,7 +408,7 @@ export default function PedidosPage() {
       if (editandoDetalle) {
         // Si la venta estaba entregada/pagada, devolver el stock de los items anteriores
         if (CONSUMEN_STOCK.includes(editandoDetalle.estado)) {
-          await ajustarStock((editandoDetalle.items || []).map((it) => ({ id: it.producto_id ?? undefined, cantidad: it.cantidad })), +1);
+          await ajustarStock((editandoDetalle.items || []).map((it) => ({ id: it.producto_id ?? undefined, cantidad: it.cantidad, congeladas: it.congeladas ?? 0 })), +1);
         }
         const { error: ue } = await supabase.from('ventas_detalle').update({
           fecha, total: totalVenta, estado: estadoDetalle,
@@ -406,13 +419,13 @@ export default function PedidosPage() {
 
         await supabase.from('items_venta_detalle').delete().eq('venta_id', editandoDetalle.id);
         const { error: ie } = await supabase.from('items_venta_detalle').insert(
-          items.map((i) => ({ venta_id: editandoDetalle.id, producto_id: i.producto.id, cantidad: i.cantidad, precio_unitario: i.precioUnitario }))
+          items.map((i) => ({ venta_id: editandoDetalle.id, producto_id: i.producto.id, cantidad: i.cantidad, congeladas: i.congeladas ?? 0, precio_unitario: i.precioUnitario }))
         );
         if (ie) throw new Error(ie.message);
 
         // Descontar stock de los items nuevos si el estado consume
         if (CONSUMEN_STOCK.includes(estadoDetalle)) {
-          await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad })), -1);
+          await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad, congeladas: i.congeladas ?? 0 })), -1);
         }
       } else {
         const { data: venta, error: ve } = await supabase
@@ -436,6 +449,7 @@ export default function PedidosPage() {
             venta_id: venta.id,
             producto_id: i.producto.id,
             cantidad: i.cantidad,
+            congeladas: i.congeladas ?? 0,
             precio_unitario: i.precioUnitario,
           }))
         );
@@ -443,7 +457,7 @@ export default function PedidosPage() {
 
         // El stock solo baja si la venta se registra ya como entregada/pagada
         if (CONSUMEN_STOCK.includes(estadoDetalle)) {
-          await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad })), -1);
+          await ajustarStock(items.map((i) => ({ id: i.producto.id, cantidad: i.cantidad, congeladas: i.congeladas ?? 0 })), -1);
         }
       }
 
@@ -492,14 +506,19 @@ export default function PedidosPage() {
     } catch {}
   }
 
-  // Descuenta (signo -1) o devuelve (signo +1) stock leyendo el valor actual de cada producto
-  async function ajustarStock(movimientos: { id?: string; cantidad: number }[], signo: number) {
+  // Descuenta (signo -1) o devuelve (signo +1) stock leyendo el valor actual de cada producto.
+  // Las unidades marcadas como congeladas se mueven contra el stock congelado, no el normal.
+  async function ajustarStock(movimientos: { id?: string; cantidad: number; congeladas?: number }[], signo: number) {
     for (const m of movimientos) {
       if (!m.id) continue;
-      const { data } = await supabase.from('productos').select('stock').eq('id', m.id).single();
+      const cong = Math.max(0, Math.min(m.congeladas ?? 0, m.cantidad));
+      const normal = m.cantidad - cong;
+      const { data } = await supabase.from('productos').select('stock, stock_congelado').eq('id', m.id).single();
       const actual = data?.stock ?? 0;
-      const nuevo = signo < 0 ? Math.max(0, actual - m.cantidad) : actual + m.cantidad;
-      await supabase.from('productos').update({ stock: nuevo }).eq('id', m.id);
+      const actualCong = data?.stock_congelado ?? 0;
+      const nuevo = signo < 0 ? Math.max(0, actual - normal) : actual + normal;
+      const nuevoCong = signo < 0 ? Math.max(0, actualCong - cong) : actualCong + cong;
+      await supabase.from('productos').update({ stock: nuevo, stock_congelado: nuevoCong }).eq('id', m.id);
     }
   }
 
@@ -512,7 +531,7 @@ export default function PedidosPage() {
       const seraConsumido = CONSUMEN_STOCK.includes(estado);
       const movimientos = (p.detalle || []).map((d) => {
         const prod = d.producto as unknown as Producto;
-        return { id: prod?.id, cantidad: d.cantidad };
+        return { id: prod?.id, cantidad: d.cantidad, congeladas: d.congeladas ?? 0 };
       });
       if (!eraConsumido && seraConsumido) {
         await ajustarStock(movimientos, -1); // pasa a entregado → baja stock
@@ -543,7 +562,7 @@ export default function PedidosPage() {
     if (v) {
       const eraConsumido = CONSUMEN_STOCK.includes(v.estado);
       const seraConsumido = CONSUMEN_STOCK.includes(estado);
-      const movimientos = (v.items || []).map((i) => ({ id: i.producto_id ?? undefined, cantidad: i.cantidad }));
+      const movimientos = (v.items || []).map((i) => ({ id: i.producto_id ?? undefined, cantidad: i.cantidad, congeladas: i.congeladas ?? 0 }));
       if (!eraConsumido && seraConsumido) {
         await ajustarStock(movimientos, -1); // pasa a entregado → baja stock
       } else if (eraConsumido && !seraConsumido) {
@@ -585,7 +604,7 @@ export default function PedidosPage() {
 
       // 4. Devolver el stock solo si la venta ya lo había descontado
       if (CONSUMEN_STOCK.includes(v.estado)) {
-        await ajustarStock((v.items || []).map((i) => ({ id: i.producto_id ?? undefined, cantidad: i.cantidad })), +1);
+        await ajustarStock((v.items || []).map((i) => ({ id: i.producto_id ?? undefined, cantidad: i.cantidad, congeladas: i.congeladas ?? 0 })), +1);
       }
 
       setDetalleAEliminar(null);
@@ -605,7 +624,7 @@ export default function PedidosPage() {
     if (CONSUMEN_STOCK.includes(p.estado)) {
       await ajustarStock((p.detalle || []).map((d) => {
         const prod = d.producto as unknown as Producto;
-        return { id: prod?.id, cantidad: d.cantidad };
+        return { id: prod?.id, cantidad: d.cantidad, congeladas: d.congeladas ?? 0 };
       }), +1);
     }
     await supabase.from('detalle_pedido').delete().eq('pedido_id', p.id);
@@ -818,6 +837,9 @@ export default function PedidosPage() {
                   {v.items.map((item, i) => (
                     <p key={i} className="text-xs" style={{ color: '#6b7280' }}>
                       {item.nombre} — {item.cantidad} u. · {fmt(item.precio_unitario)} c/u
+                      {(item.congeladas ?? 0) > 0 && (
+                        <span className="ml-2 font-bold" style={{ color: '#00bcd4' }}>🧊 {item.congeladas} cong.</span>
+                      )}
                     </p>
                   ))}
                   <div className="flex gap-2 mt-2 flex-wrap items-center">
@@ -895,7 +917,12 @@ export default function PedidosPage() {
               </div>
               {(p.detalle || []).map((d) => (
                 <div key={d.id} className="flex justify-between text-sm py-1 border-b" style={{ borderColor: '#2a2a2a' }}>
-                  <span style={{ color: '#9ca3af' }}>{d.producto?.nombre ?? '—'}</span>
+                  <span style={{ color: '#9ca3af' }}>
+                    {d.producto?.nombre ?? '—'}
+                    {(d.congeladas ?? 0) > 0 && (
+                      <span className="ml-2 text-xs font-bold" style={{ color: '#00bcd4' }}>🧊 {d.congeladas} cong.</span>
+                    )}
+                  </span>
                   <span style={{ color: '#f5f5f5' }}>{d.cantidad} u. · {fmt(d.precio_unitario * d.cantidad)}</span>
                 </div>
               ))}
@@ -1031,9 +1058,38 @@ export default function PedidosPage() {
                           color: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? 'white' : '#f5f5f5',
                         }} />
                     </div>
+                    {/* Cuántas de estas unidades salen del congelador */}
+                    {(() => {
+                      const dispCong = todosProductos.find((pp) => pp.id === item.producto.id)?.stock_congelado ?? 0;
+                      const cong = item.congeladas ?? 0;
+                      return (
+                        <div className="flex items-center justify-between mb-2 p-2 rounded-lg border"
+                          style={{ backgroundColor: cong > 0 ? '#00bcd415' : '#1c1c1c', borderColor: cong > 0 ? '#00bcd460' : '#2a2a2a' }}>
+                          <div className="min-w-0 pr-2">
+                            <p className="text-xs font-bold" style={{ color: cong > 0 ? '#00bcd4' : '#9ca3af' }}>🧊 Van congeladas</p>
+                            <p className="text-[10px]" style={{ color: cong > dispCong ? '#ff9800' : '#6b7280' }}>
+                              {dispCong > 0 ? `Tienes ${dispCong} congeladas de este producto` : 'No tienes congeladas de este producto'}
+                              {cong > dispCong ? ' · te faltan' : ''}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button onClick={() => setCongeladasItem(item.producto.id, cong - 1)} disabled={cong === 0}
+                              className="w-8 h-8 rounded-lg border font-bold disabled:opacity-30"
+                              style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
+                            <span className="w-8 text-center font-extrabold" style={{ color: cong > 0 ? '#00bcd4' : '#4b5563' }}>{cong}</span>
+                            <button onClick={() => setCongeladasItem(item.producto.id, cong + 1)} disabled={cong >= item.cantidad}
+                              className="w-8 h-8 rounded-lg border font-bold disabled:opacity-30"
+                              style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                            <button onClick={() => setCongeladasItem(item.producto.id, item.cantidad)}
+                              className="px-2 h-8 rounded-lg border text-[10px] font-bold"
+                              style={{ borderColor: '#00bcd460', color: '#00bcd4', backgroundColor: '#00bcd410' }}>Todas</button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))}
+                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1), congeladas: Math.min(i.congeladas ?? 0, Math.max(1, i.cantidad - 1)) } : i))}
                           className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
                         <span className="w-8 text-center font-extrabold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
                         <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))}
@@ -1143,9 +1199,38 @@ export default function PedidosPage() {
                           color: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? 'white' : '#f5f5f5',
                         }} />
                     </div>
+                    {/* Cuántas de estas unidades salen del congelador */}
+                    {(() => {
+                      const dispCong = todosProductos.find((pp) => pp.id === item.producto.id)?.stock_congelado ?? 0;
+                      const cong = item.congeladas ?? 0;
+                      return (
+                        <div className="flex items-center justify-between mb-2 p-2 rounded-lg border"
+                          style={{ backgroundColor: cong > 0 ? '#00bcd415' : '#1c1c1c', borderColor: cong > 0 ? '#00bcd460' : '#2a2a2a' }}>
+                          <div className="min-w-0 pr-2">
+                            <p className="text-xs font-bold" style={{ color: cong > 0 ? '#00bcd4' : '#9ca3af' }}>🧊 Van congeladas</p>
+                            <p className="text-[10px]" style={{ color: cong > dispCong ? '#ff9800' : '#6b7280' }}>
+                              {dispCong > 0 ? `Tienes ${dispCong} congeladas de este producto` : 'No tienes congeladas de este producto'}
+                              {cong > dispCong ? ' · te faltan' : ''}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button onClick={() => setCongeladasItem(item.producto.id, cong - 1)} disabled={cong === 0}
+                              className="w-8 h-8 rounded-lg border font-bold disabled:opacity-30"
+                              style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
+                            <span className="w-8 text-center font-extrabold" style={{ color: cong > 0 ? '#00bcd4' : '#4b5563' }}>{cong}</span>
+                            <button onClick={() => setCongeladasItem(item.producto.id, cong + 1)} disabled={cong >= item.cantidad}
+                              className="w-8 h-8 rounded-lg border font-bold disabled:opacity-30"
+                              style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                            <button onClick={() => setCongeladasItem(item.producto.id, item.cantidad)}
+                              className="px-2 h-8 rounded-lg border text-[10px] font-bold"
+                              style={{ borderColor: '#00bcd460', color: '#00bcd4', backgroundColor: '#00bcd410' }}>Todas</button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))}
+                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1), congeladas: Math.min(i.congeladas ?? 0, Math.max(1, i.cantidad - 1)) } : i))}
                           className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
                         <span className="w-8 text-center font-extrabold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
                         <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))}
@@ -1289,9 +1374,38 @@ export default function PedidosPage() {
                           color: (!PRECIOS_PRESET.includes(item.precioUnitario) && item.precioUnitario > 0) ? 'white' : '#f5f5f5',
                         }} />
                     </div>
+                    {/* Cuántas de estas unidades salen del congelador */}
+                    {(() => {
+                      const dispCong = todosProductos.find((pp) => pp.id === item.producto.id)?.stock_congelado ?? 0;
+                      const cong = item.congeladas ?? 0;
+                      return (
+                        <div className="flex items-center justify-between mb-2 p-2 rounded-lg border"
+                          style={{ backgroundColor: cong > 0 ? '#00bcd415' : '#1c1c1c', borderColor: cong > 0 ? '#00bcd460' : '#2a2a2a' }}>
+                          <div className="min-w-0 pr-2">
+                            <p className="text-xs font-bold" style={{ color: cong > 0 ? '#00bcd4' : '#9ca3af' }}>🧊 Van congeladas</p>
+                            <p className="text-[10px]" style={{ color: cong > dispCong ? '#ff9800' : '#6b7280' }}>
+                              {dispCong > 0 ? `Tienes ${dispCong} congeladas de este producto` : 'No tienes congeladas de este producto'}
+                              {cong > dispCong ? ' · te faltan' : ''}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button onClick={() => setCongeladasItem(item.producto.id, cong - 1)} disabled={cong === 0}
+                              className="w-8 h-8 rounded-lg border font-bold disabled:opacity-30"
+                              style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
+                            <span className="w-8 text-center font-extrabold" style={{ color: cong > 0 ? '#00bcd4' : '#4b5563' }}>{cong}</span>
+                            <button onClick={() => setCongeladasItem(item.producto.id, cong + 1)} disabled={cong >= item.cantidad}
+                              className="w-8 h-8 rounded-lg border font-bold disabled:opacity-30"
+                              style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>+</button>
+                            <button onClick={() => setCongeladasItem(item.producto.id, item.cantidad)}
+                              className="px-2 h-8 rounded-lg border text-[10px] font-bold"
+                              style={{ borderColor: '#00bcd460', color: '#00bcd4', backgroundColor: '#00bcd410' }}>Todas</button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1) } : i))}
+                        <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: Math.max(1, i.cantidad - 1), congeladas: Math.min(i.congeladas ?? 0, Math.max(1, i.cantidad - 1)) } : i))}
                           className="w-8 h-8 rounded-lg border font-bold" style={{ borderColor: '#2a2a2a', color: '#f5f5f5' }}>-</button>
                         <span className="w-8 text-center font-extrabold" style={{ color: '#f5f5f5' }}>{item.cantidad}</span>
                         <button onClick={() => setItems((prev) => prev.map((i) => i.producto.id === item.producto.id ? { ...i, cantidad: i.cantidad + 1 } : i))}

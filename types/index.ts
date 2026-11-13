@@ -54,6 +54,8 @@ export interface DetallePedido {
   pedido_id: string;
   producto_id: string;
   cantidad: number;
+  /** De esas unidades, cuántas salen del stock congelado (el resto sale del normal). */
+  congeladas: number;
   precio_unitario: number;
   producto?: Producto;
 }
