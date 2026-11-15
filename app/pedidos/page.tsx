@@ -512,12 +512,22 @@ export default function PedidosPage() {
     for (const m of movimientos) {
       if (!m.id) continue;
       const cong = Math.max(0, Math.min(m.congeladas ?? 0, m.cantidad));
-      const normal = m.cantidad - cong;
       const { data } = await supabase.from('productos').select('stock, stock_congelado').eq('id', m.id).single();
       const actual = data?.stock ?? 0;
       const actualCong = data?.stock_congelado ?? 0;
-      const nuevo = signo < 0 ? Math.max(0, actual - normal) : actual + normal;
-      const nuevoCong = signo < 0 ? Math.max(0, actualCong - cong) : actualCong + cong;
+      let nuevo: number;
+      let nuevoCong: number;
+      if (signo < 0) {
+        // Si marcó más congeladas de las que hay guardadas, la diferencia sale del stock normal
+        // (así no se pierden unidades de la contabilidad).
+        const quitarCong = Math.min(cong, actualCong);
+        const quitarNormal = m.cantidad - quitarCong;
+        nuevo = Math.max(0, actual - quitarNormal);
+        nuevoCong = actualCong - quitarCong;
+      } else {
+        nuevo = actual + (m.cantidad - cong);
+        nuevoCong = actualCong + cong;
+      }
       await supabase.from('productos').update({ stock: nuevo, stock_congelado: nuevoCong }).eq('id', m.id);
     }
   }
